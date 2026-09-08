@@ -1,0 +1,6 @@
+name: projects/${PROJECT_ID}/locations/${GC_REGION}/authzExtensions/${GC_AUTHZ_EXTENSION}
+service: ${EXT_HOST}
+authority: ${EXT_HOST}
+failOpen: false
+timeout: 5s
+wireFormat: EXT_PROC_GRPC

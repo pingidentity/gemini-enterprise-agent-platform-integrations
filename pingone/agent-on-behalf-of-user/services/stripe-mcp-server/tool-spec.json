@@ -1,0 +1,118 @@
+{
+  "tools": [
+    {
+      "name": "list_stripe_products",
+      "description": "List all active products from the Stripe catalog, including their prices.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "product_id": { "type": "string" },
+                "name": { "type": "string" },
+                "description": { "type": "string" },
+                "price_usd": { "type": "number" },
+                "currency": { "type": "string" }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_stripe_product",
+      "description": "Get details for a specific Stripe product by product ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "description": "The Stripe product ID (e.g. prod_ABC123)."
+          }
+        },
+        "required": ["product_id"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "price_usd": { "type": "number" },
+          "currency": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_stripe_customer",
+      "description": "Look up the authenticated user's Stripe customer record and return their saved payment method details (card brand and last 4 digits). Call this before create_stripe_payment_intent to confirm the card with the user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "customer_id": { "type": "string" },
+          "email": { "type": "string" },
+          "card_brand": { "type": "string" },
+          "card_last4": { "type": "string" },
+          "card_exp": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_stripe_payment_intent",
+      "description": "Purchase a product on behalf of the authenticated user using their saved payment method on file. Stripe will send a receipt to their email. Always call get_stripe_customer first to confirm the card on file with the user before calling this tool.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "description": "The Stripe product ID to purchase."
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Number of units to purchase (default 1)."
+          },
+          "total_price": {
+            "type": "number",
+            "description": "Total price in dollars for the purchase (unit price × quantity). For example, if a product costs $100.00 and quantity is 1, total_price is 100."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Three-letter ISO 4217 currency code (e.g. \"usd\", \"eur\")."
+          }
+        },
+        "required": ["product_id", "total_price", "currency"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "payment_intent_id": { "type": "string" },
+          "amount_usd": { "type": "number" },
+          "currency": { "type": "string" },
+          "product_id": { "type": "string" },
+          "quantity": { "type": "number" },
+          "customer_email": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}

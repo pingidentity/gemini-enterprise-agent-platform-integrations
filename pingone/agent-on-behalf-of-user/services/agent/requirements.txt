@@ -1,0 +1,9 @@
+# Pinned exactly — unbounded specs drift to versions that break the engine
+# (aiplatform 2.x drops agentplatform.agent_engines; see journey CLAUDE.md).
+google-cloud-aiplatform[agent_engines,adk]==1.165.1
+google-adk[a2a]==2.7.1
+mcp>=1.24,<2
+python-dotenv
+cloudpickle
+pydantic
+httpx

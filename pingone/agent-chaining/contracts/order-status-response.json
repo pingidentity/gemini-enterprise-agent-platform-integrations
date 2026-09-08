@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Order status response",
+  "type": "object",
+  "required": ["order_id", "status", "last_updated"],
+  "properties": {
+    "order_id": { "type": "string" },
+    "status": { "enum": ["processing", "shipped", "delivered", "cancelled"] },
+    "last_updated": { "type": "string", "format": "date-time" },
+    "summary": { "type": "string" }
+  }
+}

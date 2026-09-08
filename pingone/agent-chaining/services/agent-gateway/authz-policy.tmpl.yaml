@@ -1,0 +1,16 @@
+name: projects/${PROJECT_ID}/locations/${GC_REGION}/authzPolicies/${GC_AUTHZ_POLICY}
+action: CUSTOM
+policyProfile: CONTENT_AUTHZ
+customProvider:
+  authzExtension:
+    resources:
+      - projects/${PROJECT_ID}/locations/${GC_REGION}/authzExtensions/${GC_AUTHZ_EXTENSION}
+httpRules:
+  - to:
+      operations:
+        - paths:
+            - prefix: /v1beta1/projects/${PROJECT_ID}/locations/${GC_REGION}/reasoningEngines/
+            - prefix: /mcp
+target:
+  resources:
+    - projects/${PROJECT_ID}/locations/${GC_REGION}/agentGateways/${GC_GATEWAY_NAME}

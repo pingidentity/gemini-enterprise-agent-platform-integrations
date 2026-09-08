@@ -1,0 +1,29 @@
+{
+  "tools": [
+    {
+      "name": "get_order_status",
+      "description": "Get the current status of an order.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "description": "Order ID, for example ORD-123"
+          }
+        },
+        "required": ["order_id"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "order_id": { "type": "string" },
+          "status": { "enum": ["processing", "shipped", "delivered", "cancelled"] },
+          "summary": { "type": "string" },
+          "last_updated": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}

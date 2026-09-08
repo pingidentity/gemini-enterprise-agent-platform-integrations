@@ -1,0 +1,9 @@
+google-adk[a2a]==2.7.1
+google-cloud-aiplatform[agent_engines,adk]==1.165.1
+a2a-sdk==1.1.2
+python-dotenv
+cloudpickle
+pydantic
+httpx
+python-jose[cryptography]
+sse-starlette>=2.1.0

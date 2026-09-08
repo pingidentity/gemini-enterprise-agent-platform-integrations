@@ -1,0 +1,44 @@
+# Secrets — real env files (samples are committed)
+.env
+*.env
+!*.env.sample
+
+# AI tooling
+.claude/
+CLAUDE.md
+.playwright-mcp/
+
+# Go — compiled service binaries (named after their module directory)
+services/*/agent-gateway-extension-service
+services/*/supply-chain-mcp-tool
+**/services/agent-gateway-extension-service/agent-gateway-extension-service
+**/services/supply-chain-mcp-tool/supply-chain-mcp-tool
+**/services/agent-gateway-extension-service/obo-agent-gateway-extension-service
+**/services/stripe-mcp-server/stripe-mcp-server
+**/services/agent-gateway-extension-service/ge-agent-gateway-extension-service
+**/services/hr-mcp-server/hr-mcp-server
+**/services/order-status-mcp-server/order-status-mcp-server
+**/services/agent-gateway-extension-service/ac-agent-gateway-extension-service
+
+# Node
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# Python
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Local scratch
+*.local.yaml
+authz-ext.yaml
+authz-extension.yaml
+authz-policy.yaml
+agent-gateway.yaml
+
+debug.md
+pingone/gemini-enterprise-agent-gateway/

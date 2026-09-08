@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent Chaining order-status A2A request",
+  "description": "POST to {native A2A endpoint}/message:send with header A2A-Version: 1.0. This is the native A2A REST/protobuf-JSON shape (SendMessageRequest), not a JSON-RPC envelope — there is no jsonrpc/id/method wrapper.",
+  "type": "object",
+  "required": ["message"],
+  "properties": {
+    "message": {
+      "type": "object",
+      "required": ["messageId", "role", "parts"],
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1 },
+        "role": { "const": "ROLE_USER" },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "google.protobuf.Struct — arbitrary string keys. Carries the RFC 8693 delegated bearer here rather than in a header, since a custom header added by the gateway extension was observed not to survive the hop to the native A2A endpoint.",
+      "properties": {
+        "delegatedAuthorization": {
+          "type": "string",
+          "pattern": "^Bearer .+"
+        }
+      }
+    }
+  }
+}
