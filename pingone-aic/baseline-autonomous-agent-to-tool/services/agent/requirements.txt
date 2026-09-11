@@ -1,0 +1,6 @@
+google-cloud-aiplatform[agent_engines,adk]>=1.126.1
+google-adk>=1.18.0
+mcp>=1.24,<2
+python-dotenv
+httpx
+google-cloud-storage

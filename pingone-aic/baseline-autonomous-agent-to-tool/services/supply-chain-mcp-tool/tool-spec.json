@@ -1,0 +1,38 @@
+{
+  "tools": [
+    {
+      "name": "restock",
+      "description": "Place a restock order for a product in a given region.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "description": "the product SKU to restock"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "number of units to order"
+          },
+          "region": {
+            "type": "string",
+            "description": "target fulfillment region"
+          }
+        },
+        "required": ["product_id", "quantity", "region"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "order_id": { "type": "string" },
+          "product_id": { "type": "string" },
+          "quantity": { "type": "integer" }
+        },
+        "required": ["status", "order_id", "product_id", "quantity"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
