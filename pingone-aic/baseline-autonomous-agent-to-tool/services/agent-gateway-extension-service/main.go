@@ -1,7 +1,7 @@
 // Agent Gateway extension service — an Envoy ext_proc gRPC handler.
 //
 // The Agent Gateway calls this service for every request on the governed path.
-// For requests bound to the MCP tool it delegates the agent's own PingOne token
+// For requests bound to the MCP tool it delegates the agent's own AIC token
 // (arriving as the Authorization Bearer) into a tool-audienced token via an
 // RFC 8693 exchange (see idp.go), then injects that token as the Authorization
 // header. It fails closed: unauthorized requests get an immediate error and
@@ -39,10 +39,11 @@ func main() {
 		idpClientID:       os.Getenv("IDP_CLIENT_ID"),
 		idpSecret:         os.Getenv("IDP_CLIENT_SECRET"),
 		idpScope:          os.Getenv("IDP_SCOPE"),
+		idpIssuer:         os.Getenv("IDP_ISSUER"),
 		idpAudience:       os.Getenv("IDP_REQUIRED_AUDIENCE"),
+		toolAudience:      os.Getenv("TOOL_AUDIENCE"),
 		authzEndpoint:     os.Getenv("AUTHZ_DECISION_ENDPOINT"),
-		authzClientID:     os.Getenv("AUTHZ_CLIENT_ID"),
-		authzClientSecret: os.Getenv("AUTHZ_CLIENT_SECRET"),
+		authzSharedSecret: os.Getenv("AUTHZ_SHARED_SECRET"),
 	})
 
 	lis, err := net.Listen("tcp", ":"+port)

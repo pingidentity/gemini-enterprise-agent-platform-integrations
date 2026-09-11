@@ -6,20 +6,16 @@ The `restock` handler itself is a mock that returns a hardcoded accepted order �
 
 ## Configure
 
-### 1. Create the Supply Chain MCP Tool resource in PingOne
+### 1. PingOne AIC - no resource needed
 
-In PingOne, create a **Resource** named `BAATT Supply Chain MCP Tool` with the `supply-chain:restock` scope and `supply-chain-mcp-tool` audience.
-![Supply Chain MCP Tool Resource Config](../../../../_docs/baseline-autonomous-agent-to-tool/pingone/supply-chain-mcp-tool-resource-config.png)
+AIC has no "resources" — everything the SaaS resource did is now configured elsewhere:
 
-Then make the resource prove who delegated to whom — PingOne doesn't populate the RFC 8693 `act` (actor) claim automatically. On the resource's **Attributes** tab, configure two attributes:
+- **Audience (`supply-chain-mcp-tool`)** — the extension's exchange request carries it in the `audience` parameter; AIC unions it onto the token's `aud` array (see the [extension README](../agent-gateway-extension-service/README.md)).
+- **Scope (`supply-chain:restock`)** — lives on each client's scope list.
+- **`sub` and `act` claims** — AIC stamps both natively on token exchange (from the subject and actor tokens); no attributes or expressions.
+- **Delegation enforcement (`may_act`)** — the May Act script on the agent client + AIC's fail-closed exchange validation replaces the SaaS `act` expression. A wrong-actor exchange is rejected at the token endpoint, before any token is minted.
 
-| Attribute | Required | Advanced Expression |
-|---|---|---|
-| `sub` | no | `(#root.context.requestData.grantType == "client_credentials") ? "no-subject" : #root.context.requestData.subjectToken.client_id` |
-| `act` | **yes** | `(#root.context.requestData.grantType == "client_credentials")?"noActor":((#root.context.requestData.subjectToken.may_act.sub == #root.context.requestData.actorToken.client_id)?{"sub":#root.context.requestData.actorToken.client_id}:null)` |
-
-- On a token exchange, `sub` carries the subject token's `client_id` through — the BAATT subject is an agent's `client_credentials` token, which has **no `sub` claim**, so the exchanged token's identity must come from `client_id`. On the extension service's own `client_credentials` actor-token fetch (no delegation involved), it stamps the literal `no-subject`.
-- On a token exchange, `act` is set to the exchanging actor's identity only if the subject token's `may_act` names that actor — the extension; otherwise it returns `null`, which fails the exchange outright since `act` is **Required**. That is the enforcement: nothing but the extension can exchange an agent token onto this resource.
+This service only consumes the result: a token whose `aud` array contains `supply-chain-mcp-tool`, `sub` is the agent, and `act.sub` is the extension.
 
 ### 2. Configure environment values
 
@@ -31,9 +27,9 @@ cp .env.sample .env
 |---|---|
 | `GC_REGION` | GCP region, e.g. `us-central1` |
 | `GC_CLOUD_RUN_SERVICE_NAME` | Cloud Run service name, e.g. `baatt-supply-chain-mcp-tool` |
-| `IDP_ISSUER` | PingOne issuer URL, e.g. `https://auth.pingone.com/<env-id>/as`. |
-| `IDP_REQUIRED_AUDIENCE` | Expected `aud` claim, e.g. `supply-chain-mcp-tool` |
-| `IDP_REQUIRED_SCOPE` | Scope the inbound token must carry, e.g. `supply-chain:restock` |
+| `IDP_ISSUER` | AIC issuer — note the explicit `:443` port, it must byte-match the token's `iss` claim: `https://<tenant-id>.forgeblocks.com:443/am/oauth2/realms/root/realms/<realm>` |
+| `IDP_REQUIRED_AUDIENCE` | Expected `aud` claim, e.g. `supply-chain-mcp-tool` (AIC unions audiences, so membership is checked, not equality) |
+| `IDP_REQUIRED_SCOPE` | Scope the inbound token must carry, e.g. `supply-chain:restock` (AIC serializes `scope` as a JSON array; `hasScope` handles both that and the SaaS string form) |
 
 ## Deploy
 

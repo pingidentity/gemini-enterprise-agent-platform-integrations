@@ -2,6 +2,7 @@
 .env
 *.env
 !*.env.sample
+secrets.md
 
 # AI tooling
 .claude/

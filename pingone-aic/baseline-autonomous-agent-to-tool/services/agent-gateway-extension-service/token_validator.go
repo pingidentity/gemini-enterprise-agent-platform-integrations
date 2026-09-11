@@ -20,11 +20,11 @@ type delegatedTokenValidator struct {
 	keys     *jwk.Cache
 }
 
-func newDelegatedTokenValidator(ctx context.Context, idpTokenEndpoint, audience, scope string) (*delegatedTokenValidator, error) {
-	// Derive issuer and JWKS URL from the token endpoint.
-	// IDP_TOKEN_ENDPOINT form: https://auth.pingone.<region>/<env-id>/as/token
-	issuer := strings.TrimSuffix(idpTokenEndpoint, "/token")
-	jwksURL := issuer + "/jwks"
+func newDelegatedTokenValidator(ctx context.Context, issuer, audience, scope string) (*delegatedTokenValidator, error) {
+	// IDP_ISSUER must be the exact `iss` claim of the AIC token, port included:
+	// https://<tenant>:443/am/oauth2/realms/root/realms/<realm>
+	// AIC exposes keys at <issuer>/connect/jwk_uri (PingOne SaaS used <issuer>/jwks).
+	jwksURL := strings.TrimSuffix(issuer, "/") + "/connect/jwk_uri"
 
 	cache := jwk.NewCache(ctx)
 	if err := cache.Register(jwksURL); err != nil {
@@ -50,7 +50,7 @@ func (v *delegatedTokenValidator) verify(ctx context.Context, raw string) error 
 		return fmt.Errorf("load JWKS: %w", err)
 	}
 
-	// PingOne JWKS keys omit the "alg" field — infer from key type.
+	// AIC's JWKS keys omit the "alg" field — infer from key type.
 	tok, err := jwt.Parse([]byte(raw),
 		jwt.WithKeySet(set, jws.WithInferAlgorithmFromKey(true)),
 		jwt.WithValidate(true),
@@ -67,16 +67,18 @@ func (v *delegatedTokenValidator) verify(ctx context.Context, raw string) error 
 	return nil
 }
 
+// hasScope handles both serializations: PingOne SaaS sent "scope" as a
+// space-delimited string; AIC sends it as a JSON array.
 func hasScope(tok jwt.Token, want string) bool {
 	if raw, ok := tok.Get("scope"); ok {
-		if s, ok := raw.(string); ok && slices.Contains(strings.Fields(s), want) {
-			return true
-		}
-	}
-	if raw, ok := tok.Get("scp"); ok {
-		if arr, ok := raw.([]any); ok {
-			for _, item := range arr {
-				if s, ok := item.(string); ok && s == want {
+		switch s := raw.(type) {
+		case string:
+			if slices.Contains(strings.Fields(s), want) {
+				return true
+			}
+		case []any:
+			for _, item := range s {
+				if str, ok := item.(string); ok && str == want {
 					return true
 				}
 			}

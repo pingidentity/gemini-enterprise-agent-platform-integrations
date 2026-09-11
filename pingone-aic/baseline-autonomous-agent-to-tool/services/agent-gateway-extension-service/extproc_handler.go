@@ -20,20 +20,21 @@ type shim struct {
 
 	toolURL        string
 	idp            *idpClient
-	authz          *pingoneAuthorizeClient
+	authz          *pingAuthorizeClient
 	tokenValidator *delegatedTokenValidator
 }
 
 type shimConfig struct {
-	toolURL            string
-	idpEndpoint        string
-	idpClientID        string
-	idpSecret          string
-	idpScope           string
-	idpAudience        string
-	authzEndpoint      string
-	authzClientID      string
-	authzClientSecret  string
+	toolURL           string
+	idpEndpoint       string
+	idpClientID       string
+	idpSecret         string
+	idpScope          string
+	idpIssuer         string // exact iss claim of inbound tokens (AIC includes :443)
+	idpAudience       string
+	toolAudience      string // audience requested on the exchanged tool token
+	authzEndpoint     string
+	authzSharedSecret string
 }
 
 func newShim(cfg shimConfig) *shim {
@@ -44,30 +45,29 @@ func newShim(cfg shimConfig) *shim {
 			clientID:     cfg.idpClientID,
 			clientSecret: cfg.idpSecret,
 			scope:        cfg.idpScope,
+			audience:     cfg.toolAudience,
 		},
 	}
 
-	if cfg.idpAudience != "" {
+	if cfg.idpIssuer != "" && cfg.idpAudience != "" {
 		ctx := context.Background()
-		if v, err := newDelegatedTokenValidator(ctx, cfg.idpEndpoint, cfg.idpAudience, cfg.idpScope); err != nil {
+		if v, err := newDelegatedTokenValidator(ctx, cfg.idpIssuer, cfg.idpAudience, cfg.idpScope); err != nil {
 			log.Printf("[ExtSvc] WARNING: token validator init failed: %v — inbound token validation disabled", err)
 		} else {
 			s.tokenValidator = v
 		}
 	} else {
-		log.Println("[ExtSvc] WARNING: IDP_REQUIRED_AUDIENCE not set — inbound token validation disabled")
+		log.Println("[ExtSvc] WARNING: IDP_ISSUER / IDP_REQUIRED_AUDIENCE not set — inbound token validation disabled")
 	}
 
 	if cfg.authzEndpoint != "" {
-		s.authz = &pingoneAuthorizeClient{
+		s.authz = &pingAuthorizeClient{
 			decisionEndpoint: cfg.authzEndpoint,
-			tokenEndpoint:    cfg.idpEndpoint,
-			clientID:         cfg.authzClientID,
-			clientSecret:     cfg.authzClientSecret,
+			sharedSecret:     cfg.authzSharedSecret,
 		}
-		log.Printf("[ExtSvc] PingOne Authorize enabled: %s", cfg.authzEndpoint)
+		log.Printf("[ExtSvc] PingAuthorize enabled: %s", cfg.authzEndpoint)
 	} else {
-		log.Println("[ExtSvc] WARNING: AUTHZ_DECISION_ENDPOINT not set — skipping PingOne Authorize check")
+		log.Println("[ExtSvc] WARNING: AUTHZ_DECISION_ENDPOINT not set — skipping PingAuthorize check")
 	}
 	if !s.configured() {
 		log.Println("[ExtSvc] WARNING: TOOL_URL / IDP_TOKEN_ENDPOINT / IDP_CLIENT_ID / IDP_CLIENT_SECRET incomplete — tool requests will be denied")
@@ -84,7 +84,7 @@ func (s *shim) configured() bool {
 // Per-request flow (two phases):
 //  1. Header phase: validate the agent's bearer token, exchange it for a
 //     tool-scoped token, inject it, and request the body (BUFFERED).
-//  2. Body phase: parse the MCP method and quantity, call PingOne Authorize,
+//  2. Body phase: parse the MCP method and quantity, call PingAuthorize,
 //     then either echo the body (PERMIT) or return 403 (DENY).
 func (s *shim) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
 	var agentClientID string
@@ -110,13 +110,13 @@ func (s *shim) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
 				permitted, err := s.authz.Decide(agentClientID, currentHour())
 				switch {
 				case err != nil:
-					log.Printf("[ExtSvc] PingOne Authorize error: %v", err)
+					log.Printf("[ExtSvc] PingAuthorize error: %v", err)
 					resp = denyForbidden("authorization service error")
 				case !permitted:
-					log.Printf("[ExtSvc] PingOne Authorize DENY agent=%s", agentClientID)
+					log.Printf("[ExtSvc] PingAuthorize DENY agent=%s", agentClientID)
 					resp = denyForbidden("request denied by policy")
 				default:
-					log.Printf("[ExtSvc] PingOne Authorize PERMIT agent=%s", agentClientID)
+					log.Printf("[ExtSvc] PingAuthorize PERMIT agent=%s", agentClientID)
 					resp = echoRequestBody(v.RequestBody)
 				}
 			} else {

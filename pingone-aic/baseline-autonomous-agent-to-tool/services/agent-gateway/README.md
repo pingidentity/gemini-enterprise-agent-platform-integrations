@@ -50,7 +50,7 @@ without importing. Config:
 > | Extension | Profile | Service | Role |
 > |---|---|---|---|
 > | `baatt-agent-gateway-iap-authzextension` | `REQUEST_AUTHZ` | `iap.googleapis.com` | Google-managed, **auto-created** with the gateway. Enforces the IAP identity/egress check (`iap.egressor`) — this is the "Auth provider: Google Cloud Identity-Aware Proxy" shown on the gateway. |
-> | `baatt-ext-proc-authzext` | `CONTENT_AUTHZ` | your Cloud Run ext-svc | The one you just created. Does the PingOne token exchange and `Authorization` injection. |
+> | `baatt-ext-proc-authzext` | `CONTENT_AUTHZ` | your Cloud Run ext-svc | The one you just created. Does the AIC token exchange and `Authorization` injection. |
 >
 > The IAP extension answers *"is this agent allowed to egress at all?"*; yours
 > answers *"mint and inject the tool credential."* Both run on every `/mcp`
@@ -70,23 +70,14 @@ those are already handled:
   `*.mtls.googleapis.com`) — **auto-created** with the gateway for the runtime's
   own egress. Leave them alone.
 
-So the only endpoint you add here is **PingOne** — under **Endpoints → Add
-endpoint**, Destination URL = your PingOne host (e.g. `https://auth.pingone.ca`).
+So the only endpoints you add here are the two **Ping identity hosts** — under
+**Endpoints → Add endpoint**:
+
+- **PingOne AIC** — Destination URL = your AIC tenant (e.g. `https://<tenant-id>.forgeblocks.com`). The agent fetches its token here, and the extension service exchanges tokens here.
+- **PingAuthorize** — Destination URL = your PingAuthorize host (e.g. `https://ping-authorize-demo.com`). The extension service sends the decision request here on `tools/call`.
 
 ![Agent Gateway Egress Destinations](../../../../_docs/baseline-autonomous-agent-to-tool/agent-gateway-egress-destinations.png)
 
-## 5. Create the PingOne Resource for the gateway
+## 5. Identity-plane setup lives in the client apps, not here
 
-In PingOne, create a **Resource** named `BAATT Google Cloud Agent Gateway` with the `supply-chain:restock` scope and `google-cloud-agent-gateway` audience.
-
-This resource mints the agent's subject token, so it must license the extension as the one allowed next actor. On the resource's **Attributes** tab, configure one attribute:
-
-| Attribute | Required | Advanced Expression |
-|---|---|---|
-| `may_act` | no | `{"sub":"<EXT-SVC-CLIENT-ID>"}` |
-
-`may_act` is a flat constant naming the extension as the sole next actor — this is what the tool resource's `act` check compares against at exchange time. Nothing ever exchanges onto this resource (only `client_credentials` mints), so no `act` attribute is needed here either; the delegation proof lives entirely in the tool resource's `act` mapping, and the agent's identity rides in `client_id`.
-
-The `BAATT Supply Chain MCP Tool` resource needs the matching `act` mapping on its side — see the [supply chain MCP tool's README](../supply-chain-mcp-tool/README.md#1-create-the-supply-chain-mcp-tool-resource-in-pingone).
-
-![Agent Gateway Resource Config](../../../../_docs/baseline-autonomous-agent-to-tool/pingone/agent-gateway-resource-config.png)
+In SaaS, this section configured a PingOne **Resource** (audience + `may_act` attribute) for the gateway. AIC has no resources: the gateway-side token settings moved into the agent client's scripts — the access-token modification script sets `aud=google-cloud-agent-gateway` and the May Act script sets `may_act` naming the extension. Both are part of the agent setup — see [the agent's README](../agent/README.md).

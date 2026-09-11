@@ -2,13 +2,13 @@
 
 A CRM agent restocks inventory by calling an external supply-chain [MCP](https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro) tool.
 
-Every MCP request is intercepted by the [GCP Agent Gateway](https://docs.cloud.google.com/gemini-enterprise-agent-platform/govern/gateways/agent-gateway-overview), which calls an extension service via [Envoy ext_proc](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_proc_filter). The extension service validates the agent's token, then asks [PingOne Authorize](https://www.pingidentity.com/en/product/pingone-authorize.html) whether this agent is allowed to call this tool at this time (agent identity + business hours). On PERMIT, it performs an [RFC 8693 token exchange](https://docs.pingidentity.com/pingone/use_cases/p1_oauth_2_token_exchange_delegation.html), minting a short-lived token scoped specifically to the supply-chain tool, and injects it before the request is forwarded.
+Every MCP request is intercepted by the [GCP Agent Gateway](https://docs.cloud.google.com/gemini-enterprise-agent-platform/govern/gateways/agent-gateway-overview), which calls an extension service via [Envoy ext_proc](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_proc_filter). The extension service validates the agent's token, then asks [PingAuthorize](https://www.pingidentity.com/en/product/pingauthorize.html) whether this agent is allowed to call this tool at this time (agent identity + business hours). On PERMIT, it performs an [RFC 8693 token exchange](https://datatracker.ietf.org/doc/html/rfc8693), minting a short-lived token scoped specifically to the supply-chain tool, and injects it before the request is forwarded.
 
 ## Architecture
 
-![Baseline Autonomous Agent to Tool reference architecture](../../_docs/baseline-autonomous-agent-to-tool/architecture.svg)
+![Baseline Autonomous Agent to Tool reference architecture](../../_docs/baseline-autonomous-agent-to-tool/architecture-aic.png)
 
-Following the diagram: the agent authenticates to PingOne as its own client and carries that token on every MCP request, which Agent Runtime routes through the gateway to the extension service. The service asks PingOne Authorize for a decision; on PERMIT it performs a delegation token exchange, minting a token audienced for the tool, and injects it into the request before it's forwarded to the MCP server.
+Following the diagram: the agent authenticates to PingOne AIC as its own client and carries that token on every MCP request, which Agent Runtime routes through the gateway to the extension service. The service asks PingAuthorize for a decision; on PERMIT it performs a delegation token exchange, minting a token audienced for the tool, and injects it into the request before it's forwarded to the MCP server.
 
 ## When to use this pattern
 
@@ -16,43 +16,44 @@ Use this pattern when an autonomous agent needs to call a protected tool but sho
 
 - **No standing tool credentials in the agent.** The agent never holds a token that works against the tool, so a compromised agent has nothing to leak.
 - **Least privilege.** Each tool token is scoped to one resource and expires quickly.
-- **Delegation proof.** Every tool token carries an `act` claim naming the extension service as the actor. PingOne only stamps it after verifying the agent's token licensed that actor, so the tool can see exactly who acted for the agent.
-- **Centralized policy.** PingOne Authorize owns the permit decision. Policy can be updated centrally without modifying or redeploying the agent or the MCP server.
+- **Delegation proof.** Every tool token carries an `act` claim naming the extension service as the actor. AIC only stamps it after verifying the agent's token licensed that actor, so the tool can see exactly who acted for the agent.
+- **Centralized policy.** PingAuthorize owns the permit decision. Policy can be updated centrally without modifying or redeploying the agent or the MCP server.
 
 ## Token Chain
 
-The agent mints its own `client_credentials` token and attaches it to every MCP request. The extension service exchanges it for a tool-scoped token via RFC 8693, adding itself as the `act` (actor) claim. PingOne enforces the delegation itself: the agent's token carries `may_act` naming the extension as the only actor allowed to exchange it, and the exchange fails closed unless the actor token's client matches.
+The agent mints its own `client_credentials` token and attaches it to every MCP request. The extension service exchanges it for a tool-scoped token via RFC 8693, adding itself as the `act` (actor) claim. AIC enforces the delegation itself: the agent's token carries `may_act` naming the extension as the only actor allowed to exchange it, and the exchange fails closed unless the actor token's client matches.
 
 **Subject token** (agent's `client_credentials` token, carried on every MCP request):
-- Represents the agent (see client id; a `client_credentials` token carries no `sub`)
+- Represents the agent (see client id and sub)
 - Minted by the agent (see client id and grant type)
 - For use on the agent gateway (see aud)
 - Ability to invoke the downstream restock tool
 - Licensed for exactly one next actor: the extension service (see `may_act`)
 ```json
 {
-  "iss": "https://auth.pingone.com/<env-id>/as",
+  "iss": "https://<tenant-id>.forgeblocks.com:443/am/oauth2/realms/root/realms/<realm>",
+  "sub": "<agent-client-id>",
   "client_id": "<agent-client-id>",
   "aud": "google-cloud-agent-gateway",
-  "scope": "supply-chain:restock",
+  "scope": ["supply-chain:restock"],
   "grant_type": "client_credentials",
-  "may_act": { "sub": "<ext-svc-client-id>" }
+  "may_act": { "client_id": "<ext-svc-client-id>", "sub": "<ext-svc-client-id>" }
 }
 ```
 
 **Tool token** (minted by the extension service via RFC 8693, injected before forwarding to the MCP tool):
-- Represents the agent (see sub, carried over from the subject token's client id)
+- Represents the agent (see sub, carried over natively from the subject token)
 - Minted by the agent gateway extension service (see client id and grant type)
-- For use on the supply chain mcp tool (see aud)
+- For use on the supply chain mcp tool (see aud; AIC unions the requested audience onto the actor's own ID, so validators check membership)
 - Ability to invoke the restock tool
-- Delegation proof: the extension acted for the agent, and PingOne verified that against `may_act` at exchange time (see act)
+- Delegation proof: the extension acted for the agent, and AIC verified that against `may_act` at exchange time (see act)
 ```json
 {
-  "iss": "https://auth.pingone.com/<env-id>/as",
+  "iss": "https://<tenant-id>.forgeblocks.com:443/am/oauth2/realms/root/realms/<realm>",
   "sub": "<agent-client-id>",
   "client_id": "<ext-svc-client-id>",
-  "aud": "supply-chain-mcp-tool",
-  "scope": "supply-chain:restock",
+  "aud": ["<ext-svc-client-id>", "supply-chain-mcp-tool"],
+  "scope": ["supply-chain:restock"],
   "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
   "act": { "sub": "<ext-svc-client-id>" }
 }
@@ -62,19 +63,19 @@ The agent mints its own `client_credentials` token and attaches it to every MCP 
 
 | Component | Role |
 |---|---|
-| [**Agent**](services/agent) | CRM agent acting as a MCP client, mints its own PingOne token as the delegation subject |
-| [**Agent Gateway Extension Service**](services/agent-gateway-extension-service) | ext_proc handler, forwards request to PingOne Authorize, exchanges & injects IdP token |
+| [**Agent**](services/agent) | CRM agent acting as a MCP client, mints its own PingOne AIC token as the delegation subject |
+| [**Agent Gateway Extension Service**](services/agent-gateway-extension-service) | ext_proc handler, forwards request to PingAuthorize, exchanges & injects IdP token |
 | [**Supply Chain MCP Tool**](services/supply-chain-mcp-tool) | MCP server (`restock`), validates the injected token |
 | [**Agent Gateway**](services/agent-gateway) | Google-managed policy enforcement point |
-| **PingOne Authorize** | External policy decision point |
-| **PingOne** | Identity Provider |
+| **PingAuthorize** | External policy decision point |
+| **PingOne AIC** | Identity Provider |
 
 ## Prerequisites
 
 - Google Cloud project with billing enabled
 - `gcloud` CLI authenticated against the target project
 - Docker (to build service images)
-- A PingOne environment with PingOne Authorize
+- A PingOne AIC tenant (ForgeRock AM-hosted realm) and a PingAuthorize deployment
 
 ## Deployment
 
@@ -88,7 +89,7 @@ Follow the instructions in [agent-gateway-extension-service](services/agent-gate
 Follow the instructions in [agent-gateway](services/agent-gateway/README.md) to create the gateway, attach the extension service, and register the egress destinations.
 
 ### 4. Agent
-Follow the instructions in [agent](services/agent/README.md) to create the agent's PingOne app, deploy it to Agent Runtime, register it, and grant it egress.
+Follow the instructions in [agent](services/agent/README.md) to create the agent's PingOne AIC client, deploy it to Agent Runtime, register it, and grant it egress.
 
 ## Verify
 
@@ -114,9 +115,9 @@ To watch the delegation happen, follow the logs of the two Cloud Run services (`
 [ExtSvc] delegated tool token minted
 [ExtSvc] injecting delegated token for baatt-supply-chain-mcp-tool-...run.app
 
-# Extension service: PingOne Authorize is consulted on tools/call only.
+# Extension service: PingAuthorize is consulted on tools/call only.
 [ExtSvc] authorize agent=<agent-client-id> hour=15
-[ExtSvc] PingOne Authorize PERMIT agent=<agent-client-id>
+[ExtSvc] PingAuthorize PERMIT agent=<agent-client-id>
 
 # Supply chain tool: every request's token is verified (signature, issuer,
 # audience, scope) before handling. The log shows who the call is for (sub),
@@ -130,5 +131,5 @@ To watch the delegation happen, follow the logs of the two Cloud Run services (`
 
 Two things worth knowing when reading these logs:
 
-- The `initialize` and `tools/list` requests are the agent and tool negotiating the tool schema; only the final `tools/call` goes through PingOne Authorize.
-- If the run fails with the agent saying it couldn't restock, the extension log is the place to look: a DENY from Authorize, a failed token exchange, or a validation error will all show there.
+- The `initialize` and `tools/list` requests are the agent and tool negotiating the tool schema; only the final `tools/call` goes through PingAuthorize.
+- If the run fails with the agent saying it couldn't restock, the extension log is the place to look: a DENY from PingAuthorize, a failed token exchange, or a validation error will all show there.

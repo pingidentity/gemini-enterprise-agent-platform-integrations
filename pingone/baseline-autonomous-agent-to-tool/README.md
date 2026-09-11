@@ -6,7 +6,7 @@ Every MCP request is intercepted by the [GCP Agent Gateway](https://docs.cloud.g
 
 ## Architecture
 
-![Baseline Autonomous Agent to Tool reference architecture](../../_docs/baseline-autonomous-agent-to-tool/architecture.svg)
+![Baseline Autonomous Agent to Tool reference architecture](../../_docs/baseline-autonomous-agent-to-tool/architecture-p1.svg)
 
 Following the diagram: the agent authenticates to PingOne as its own client and carries that token on every MCP request, which Agent Runtime routes through the gateway to the extension service. The service asks PingOne Authorize for a decision; on PERMIT it performs a delegation token exchange, minting a token audienced for the tool, and injects it into the request before it's forwarded to the MCP server.
 

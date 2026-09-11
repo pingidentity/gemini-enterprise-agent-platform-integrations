@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// httpClient is used for all outbound PingOne calls. The timeout prevents a
-// hung IdP from blocking the ext_proc stream indefinitely.
+// httpClient is used for all outbound AIC and PingAuthorize calls. The timeout
+// prevents a hung IdP from blocking the ext_proc stream indefinitely.
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 // fetchToken POSTs form-encoded credentials to a token endpoint and returns
@@ -66,20 +66,22 @@ type cachedToken struct {
 	expires time.Time
 }
 
-// idpClient performs a PingOne RFC 8693 delegation exchange. It swaps the
-// *agent's* PingOne token (the subject) for one audienced to the MCP tool,
-// presenting the extension service's own PingOne token as the actor. Because
-// the subject token was issued by PingOne (the agent obtained it via
-// client_credentials), no external-issuer trust is required.
+// idpClient performs an RFC 8693 delegation exchange. It swaps the *agent's*
+// AIC token (the subject) for one audienced to the MCP tool, presenting the
+// extension service's own AIC token as the actor. Because the subject token
+// was issued by AIC (the agent obtained it via client_credentials), no
+// external-issuer trust is required.
 //
-// PingOne picks the tool audience from the requested scope's resource mapping,
-// so there is no explicit audience/resource parameter. Both the actor token
-// and the exchanged tokens are cached independently until near expiry.
+// AIC takes the tool audience from the explicit `audience` request parameter
+// (enabled at the provider level and allow-listed on this client), and unions
+// it onto the token's aud array. Both the actor token and the exchanged
+// tokens are cached independently until near expiry.
 type idpClient struct {
 	endpoint     string
 	clientID     string
 	clientSecret string
-	scope        string // target scope; maps to the tool resource's audience
+	scope        string // target scope
+	audience     string // requested audience on the exchanged token (the MCP tool)
 
 	mu    sync.Mutex
 	actor cachedToken            // the service's own client_credentials token
@@ -125,8 +127,13 @@ func (c *idpClient) refreshActor(now time.Time) (string, error) {
 	if c.actor.token != "" && now.Before(c.actor.expires) {
 		return c.actor.token, nil
 	}
-	tok, expiresIn, err := fetchToken(c.endpoint, c.clientID, c.clientSecret,
-		url.Values{"grant_type": {"client_credentials"}})
+	form := url.Values{"grant_type": {"client_credentials"}}
+	// AIC clients have no default scopes — an actor request without a scope is
+	// rejected (invalid_scope). Request the same scope the exchange will carry.
+	if c.scope != "" {
+		form.Set("scope", c.scope)
+	}
+	tok, expiresIn, err := fetchToken(c.endpoint, c.clientID, c.clientSecret, form)
 	if err != nil {
 		return "", err
 	}
@@ -146,6 +153,9 @@ func (c *idpClient) exchange(subjectToken, actorToken string) (string, time.Dura
 	}
 	if c.scope != "" {
 		form.Set("scope", c.scope)
+	}
+	if c.audience != "" {
+		form.Set("audience", c.audience)
 	}
 	tok, expiresIn, err := fetchToken(c.endpoint, c.clientID, c.clientSecret, form)
 	if err != nil {

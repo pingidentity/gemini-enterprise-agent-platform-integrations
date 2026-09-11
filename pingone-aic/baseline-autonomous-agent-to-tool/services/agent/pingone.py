@@ -1,4 +1,4 @@
-"""PingOne client_credentials token provider for the agent's MCP requests."""
+"""PingOne AIC client_credentials token provider for the agent's MCP requests."""
 
 import os
 import threading
@@ -32,7 +32,7 @@ def _fetch_token() -> str:
     body = resp.json()
     token = body.get("access_token", "")
     if not token:
-        raise RuntimeError(f"no access_token in PingOne response: {body}")
+        raise RuntimeError(f"no access_token in IdP response: {body}")
 
     global _cached_token, _expires_at
     # Refresh 30s early; never cache for less than 10s.
@@ -43,7 +43,7 @@ def _fetch_token() -> str:
 
 
 def get_token() -> str:
-    """Return a cached PingOne access token, refreshing when near expiry."""
+    """Return a cached PingOne AIC access token, refreshing when near expiry."""
     with _lock:
         if _cached_token and time.time() < _expires_at:
             return _cached_token
@@ -51,7 +51,7 @@ def get_token() -> str:
 
 
 def mcp_headers(_ctx) -> dict[str, str]:
-    """ADK header_provider: attach the agent's PingOne token to MCP requests."""
+    """ADK header_provider: attach the agent's PingOne AIC token to MCP requests."""
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",

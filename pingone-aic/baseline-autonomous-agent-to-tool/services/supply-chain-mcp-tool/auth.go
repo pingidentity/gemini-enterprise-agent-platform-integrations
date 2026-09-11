@@ -1,6 +1,7 @@
 // Token validation — the security boundary of this service. The gateway
-// injects a scoped PingOne access token; this middleware independently verifies
-// signature, issuer, audience, expiry, and scope before any MCP handler runs.
+// injects a scoped PingOne AIC access token; this middleware independently
+// verifies signature, issuer, audience, expiry, and scope before any MCP
+// handler runs.
 package main
 
 import (
@@ -46,8 +47,9 @@ func newTokenValidator(ctx context.Context) (*tokenValidator, error) {
 		return nil, err
 	}
 
-	// Derive JWKS URL from issuer — same convention as PingOne's discovery doc.
-	jwksURL := strings.TrimSuffix(issuer, "/") + "/jwks"
+	// Derive JWKS URL from issuer — AIC exposes keys at <issuer>/connect/jwk_uri
+	// (PingOne SaaS used <issuer>/jwks).
+	jwksURL := strings.TrimSuffix(issuer, "/") + "/connect/jwk_uri"
 
 	cache := jwk.NewCache(ctx)
 	if err := cache.Register(jwksURL); err != nil {
@@ -105,7 +107,7 @@ func (v *tokenValidator) verify(ctx context.Context, raw string) (jwt.Token, err
 		return nil, fmt.Errorf("load JWKS: %w", err)
 	}
 
-	// PingOne's JWKS keys omit the "alg" field — infer it from the key type,
+	// AIC's JWKS keys omit the "alg" field — infer it from the key type,
 	// otherwise jwx refuses to verify the signature.
 	tok, err := jwt.Parse([]byte(raw),
 		jwt.WithKeySet(set, jws.WithInferAlgorithmFromKey(true)),
@@ -123,18 +125,18 @@ func (v *tokenValidator) verify(ctx context.Context, raw string) (jwt.Token, err
 	return tok, nil
 }
 
-// hasScope checks both the space-delimited "scope" string claim and the "scp"
-// array claim — PingOne uses the former; the latter is accepted for robustness.
+// hasScope handles both serializations: PingOne SaaS sent "scope" as a
+// space-delimited string; AIC sends it as a JSON array.
 func hasScope(tok jwt.Token, want string) bool {
 	if raw, ok := tok.Get("scope"); ok {
-		if s, ok := raw.(string); ok && slices.Contains(strings.Fields(s), want) {
-			return true
-		}
-	}
-	if raw, ok := tok.Get("scp"); ok {
-		if arr, ok := raw.([]any); ok {
-			for _, item := range arr {
-				if s, ok := item.(string); ok && s == want {
+		switch s := raw.(type) {
+		case string:
+			if slices.Contains(strings.Fields(s), want) {
+				return true
+			}
+		case []any:
+			for _, item := range s {
+				if str, ok := item.(string); ok && str == want {
 					return true
 				}
 			}
