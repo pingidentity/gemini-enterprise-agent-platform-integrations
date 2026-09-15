@@ -16,7 +16,7 @@ build: require-env
 	npm run build
 
 push: build
-	docker build -t $(IMAGE) .
+	docker build --platform linux/amd64 -t $(IMAGE) .
 	docker push $(IMAGE)
 
 deploy: push

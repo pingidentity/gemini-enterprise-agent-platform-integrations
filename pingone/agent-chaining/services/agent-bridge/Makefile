@@ -16,7 +16,7 @@ require-env:
 	@test -n "$(PINGONE_ISSUER)"             || { echo "PINGONE_ISSUER not set"; exit 1; }
 
 push:
-	docker build -t $(IMAGE) .
+	docker build --platform linux/amd64 -t $(IMAGE) .
 	docker push $(IMAGE)
 
 setup: require-env

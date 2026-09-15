@@ -26,7 +26,7 @@ build:
 	go build ./...
 
 push:
-	docker build -t $(IMAGE) .
+	docker build --platform linux/amd64 -t $(IMAGE) .
 	docker push $(IMAGE)
 
 setup: require-env
