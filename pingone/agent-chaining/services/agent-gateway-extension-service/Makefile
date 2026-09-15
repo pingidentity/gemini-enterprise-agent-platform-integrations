@@ -26,7 +26,7 @@ build:
 	go build ./...
 
 push:
-	docker build -t $(IMAGE) .
+	docker build --platform linux/amd64 -t $(IMAGE) .
 	docker push $(IMAGE)
 
 setup: require-env
@@ -42,6 +42,6 @@ setup: require-env
 deploy: require-env setup push
 	gcloud run deploy $(GC_CLOUD_RUN_SERVICE_NAME) \
 		--image $(IMAGE) --region $(GC_REGION) --service-account $(SA) \
-		--allow-unauthenticated --ingress=all --port 50051 --use-http2 \
+		--allow-unauthenticated --no-invoker-iam-check --ingress=all --port 50051 --use-http2 \
 		--set-env-vars "GRPC_PORT=50051,IDP_TOKEN_ENDPOINT=$(IDP_TOKEN_ENDPOINT),IDP_CLIENT_ID=$(IDP_CLIENT_ID),AGENT_GATEWAY_AUDIENCE=$(AGENT_GATEWAY_AUDIENCE),A2A_TARGET_URL=$(A2A_TARGET_URL),A2A_REQUIRED_AUDIENCE=$(A2A_REQUIRED_AUDIENCE),A2A_REQUIRED_SCOPE=$(A2A_REQUIRED_SCOPE),MCP_TARGET_URL=$(MCP_TARGET_URL),MCP_REQUIRED_AUDIENCE=$(MCP_REQUIRED_AUDIENCE),MCP_REQUIRED_SCOPE=$(MCP_REQUIRED_SCOPE),AUTHZ_DECISION_ENDPOINT=$(AUTHZ_DECISION_ENDPOINT),AUTHZ_CLIENT_ID=$(AUTHZ_CLIENT_ID)" \
 		--set-secrets "IDP_CLIENT_SECRET=$(SECRET):latest,AUTHZ_CLIENT_SECRET=$(AUTHZ_SECRET):latest"

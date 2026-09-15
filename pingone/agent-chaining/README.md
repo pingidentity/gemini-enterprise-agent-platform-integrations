@@ -172,6 +172,35 @@ The token flow begins when the user signs in through the Chat UI. The Support Ag
 - Docker (to build service images)
 - A PingOne environment with PingOne Authorize
 
+### Google Cloud access for deploying
+
+Auth lives in three separate stores — all three are needed, and expiring one breaks a different step:
+
+```bash
+gcloud auth login                        # gcloud CLI (deploy commands)
+gcloud auth application-default login    # ADC — what the Python agent SDK reads
+gcloud auth configure-docker             # docker push — never reads gcloud's login
+```
+
+Deploying from an Apple Silicon Mac requires no extra steps — the Makefiles build `--platform linux/amd64` and the agent venvs target Python 3.13 (`brew install python@3.13` if absent).
+
+IAM: a deployer needs more than `roles/editor` — two steps fail without explicit grants (both hit live):
+
+- `roles/secretmanager.admin` — `make setup` adds IAM bindings on the secrets it creates (`secretmanager.secrets.setIamPolicy`)
+- `roles/iap.admin` — the agent deploy's egress grant (`gcloud alpha iap web add-iam-policy-binding --resource-type=agent-registry`)
+- `roles/run.admin` + `roles/iam.serviceAccountUser` — Cloud Run deploys and their service accounts
+- `roles/storage.admin` — image push and the `{project}-agent-staging` bucket
+- `roles/aiplatform.user` — Reasoning Engine deploy and queries
+
+One-off grant for a deployer:
+
+```bash
+for ROLE in roles/secretmanager.admin roles/iap.admin roles/run.admin \
+            roles/iam.serviceAccountUser roles/storage.admin roles/aiplatform.user; do
+  gcloud projects add-iam-policy-binding PROJECT_ID --member=user:EMAIL --role=$ROLE
+done
+```
+
 ## Deployment
 
 ### 1. Order Status MCP Server

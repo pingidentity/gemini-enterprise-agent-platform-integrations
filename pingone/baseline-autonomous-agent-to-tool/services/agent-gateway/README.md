@@ -6,7 +6,6 @@ The Agent Gateway is a **Google-managed** resource. You create it in the console
 
 ```bash
 cp .env.sample .env
-make attach
 ```
 
 | Variable | Value |
@@ -26,8 +25,10 @@ In the console: **Agent Platform → Govern → Gateways → Add gateway**.
 | **Name** | `baatt-agent-gateway` |
 | **Region** | Same as the two Cloud Run services |
 | **Deployment mode** | Google-managed |
+| **Agent registries** | Regional registry |
 | **Governed Access Path** | Agent-to-Anywhere (egress) |
 | **Access Authorization** | Enforce policies |
+| **Policy Model** | Allow Policy |
 
 ## 3. Attach the extension service
 

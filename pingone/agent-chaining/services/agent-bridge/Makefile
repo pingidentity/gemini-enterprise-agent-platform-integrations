@@ -16,7 +16,7 @@ require-env:
 	@test -n "$(PINGONE_ISSUER)"             || { echo "PINGONE_ISSUER not set"; exit 1; }
 
 push:
-	docker build -t $(IMAGE) .
+	docker build --platform linux/amd64 -t $(IMAGE) .
 	docker push $(IMAGE)
 
 setup: require-env
@@ -31,5 +31,5 @@ deploy: require-env setup push
 		--image $(IMAGE) \
 		--region $(GC_REGION) \
 		--service-account $(SA) \
-		--allow-unauthenticated \
+		--allow-unauthenticated --no-invoker-iam-check \
 		--set-env-vars "GC_PROJECT_ID=$(GC_PROJECT_ID),GC_REGION=$(GC_REGION),AGENT_ENGINE_NAME=$(AGENT_ENGINE_NAME),CORS_ORIGIN=$(CORS_ORIGIN),PINGONE_ISSUER=$(PINGONE_ISSUER),EXPECTED_AUDIENCE=$(EXPECTED_AUDIENCE)"

@@ -27,7 +27,7 @@ build:
 	go build ./...
 
 push:
-	docker build -t $(IMAGE) .
+	docker build --platform linux/amd64 -t $(IMAGE) .
 	docker push $(IMAGE)
 
 setup: require-env
@@ -52,7 +52,7 @@ deploy: require-env setup push
 		--image $(IMAGE) \
 		--region $(GC_REGION) \
 		--service-account $(SA) \
-		--allow-unauthenticated \
+		--allow-unauthenticated --no-invoker-iam-check \
 		--ingress=all \
 		--port 50051 \
 		--use-http2 \

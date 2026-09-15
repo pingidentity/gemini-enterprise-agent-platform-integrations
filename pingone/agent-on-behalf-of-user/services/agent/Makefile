@@ -4,7 +4,7 @@ PY   := $(VENV)/bin/python
 .PHONY: venv deploy teardown clean
 
 venv:
-	python3 -m venv $(VENV)
+	python3.13 -m venv $(VENV)
 	$(PY) -m pip install --quiet --upgrade pip
 	$(PY) -m pip install --quiet -r requirements.txt
 

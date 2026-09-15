@@ -16,11 +16,11 @@ build: require-env
 	npm run build
 
 push: build
-	docker build -t $(IMAGE) .
+	docker build --platform linux/amd64 -t $(IMAGE) .
 	docker push $(IMAGE)
 
 deploy: push
 	gcloud run deploy $(SERVICE) \
 		--image $(IMAGE) \
 		--region $(GC_REGION) \
-		--allow-unauthenticated
+		--allow-unauthenticated --no-invoker-iam-check

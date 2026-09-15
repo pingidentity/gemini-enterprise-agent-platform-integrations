@@ -17,13 +17,13 @@ build:
 	go build ./...
 
 push:
-	docker build -t $(IMAGE) .
+	docker build --platform linux/amd64 -t $(IMAGE) .
 	docker push $(IMAGE)
 
 deploy: require-env push
 	gcloud run deploy $(GC_CLOUD_RUN_SERVICE_NAME) \
 		--image $(IMAGE) \
 		--region $(GC_REGION) \
-		--allow-unauthenticated \
+		--allow-unauthenticated --no-invoker-iam-check \
 		--port 8080 \
 		--set-env-vars "IDP_ISSUER=$(IDP_ISSUER),IDP_REQUIRED_SCOPE=$(IDP_REQUIRED_SCOPE),IDP_REQUIRED_AUDIENCE=$(IDP_REQUIRED_AUDIENCE)"
