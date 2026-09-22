@@ -3,9 +3,9 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /obo-agent-gateway-extension-service .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /aobou-agent-gateway-extension-service .
 
 FROM gcr.io/distroless/static-debian12
-COPY --from=builder /obo-agent-gateway-extension-service /obo-agent-gateway-extension-service
+COPY --from=builder /aobou-agent-gateway-extension-service /aobou-agent-gateway-extension-service
 EXPOSE 50051
-ENTRYPOINT ["/obo-agent-gateway-extension-service"]
+ENTRYPOINT ["/aobou-agent-gateway-extension-service"]

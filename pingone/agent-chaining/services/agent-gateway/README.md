@@ -28,6 +28,7 @@ In the console: **Agent Platform → Govern → Gateways → Add gateway**.
 | **Deployment mode** | Google-managed |
 | **Governed Access Path** | Agent-to-Anywhere (egress) |
 | **Access Authorization** | Enforce policies |
+| **Policy Model** | Allow Policy |
 
 ## 3. Attach the extension service
 

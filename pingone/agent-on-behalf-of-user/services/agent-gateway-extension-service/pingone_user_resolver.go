@@ -27,10 +27,10 @@ type pingoneUserResolver struct {
 	clientID      string
 	clientSecret  string
 
-	mu           sync.Mutex
-	mgmtToken    string
-	mgmtExpires  time.Time
-	emailCache   map[string]string // sub → email
+	mu          sync.Mutex
+	mgmtToken   string
+	mgmtExpires time.Time
+	emailCache  map[string]string // sub → email
 }
 
 // emailForSub returns the email for the given PingOne sub, using cache when possible.

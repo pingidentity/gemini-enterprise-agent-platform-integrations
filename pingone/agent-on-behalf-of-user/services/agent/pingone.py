@@ -13,10 +13,11 @@ import time
 
 import httpx
 
-_TOKEN_ENDPOINT = os.environ.get("AGENT_IDP_TOKEN_ENDPOINT", "")
-_CLIENT_ID = os.environ.get("AGENT_IDP_CLIENT_ID", "")
-_CLIENT_SECRET = os.environ.get("AGENT_IDP_CLIENT_SECRET", "")
-_SCOPE = os.environ.get("AGENT_IDP_SCOPE", "")
+_ISSUER = os.environ["IDP_ISSUER"].rstrip("/")
+_TOKEN_ENDPOINT = f"{_ISSUER}/token"
+_CLIENT_ID = os.environ["AGENT_CLIENT_ID"]
+_CLIENT_SECRET = os.environ["AGENT_CLIENT_SECRET"]
+_SCOPE = os.environ["TOOL_SCOPE"]
 
 _lock = threading.Lock()
 _actor_token = ""

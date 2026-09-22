@@ -7,3 +7,4 @@ python-dotenv>=1.0.0
 # (see journey CLAUDE.md gotchas).
 google-cloud-aiplatform[agent_engines,adk]==1.165.1
 pydantic>=2.0.0
+google-auth>=2.0.0

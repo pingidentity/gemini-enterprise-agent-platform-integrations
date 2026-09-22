@@ -11,9 +11,9 @@ SA         := $(SERVICE)@$(PROJECT_ID).iam.gserviceaccount.com
 require-env:
 	@test -n "$(GC_REGION)"                  || { echo "GC_REGION not set"; exit 1; }
 	@test -n "$(GC_CLOUD_RUN_SERVICE_NAME)"  || { echo "GC_CLOUD_RUN_SERVICE_NAME not set"; exit 1; }
-	@test -n "$(AGENT_ENGINE_NAME)"          || { echo "AGENT_ENGINE_NAME not set"; exit 1; }
+	@test -n "$(AGENT_ENGINE_ID)"            || { echo "AGENT_ENGINE_ID not set"; exit 1; }
 	@test -n "$(CORS_ORIGIN)"                || { echo "CORS_ORIGIN not set"; exit 1; }
-	@test -n "$(PINGONE_ISSUER)"             || { echo "PINGONE_ISSUER not set"; exit 1; }
+	@test -n "$(IDP_ISSUER)"                 || { echo "IDP_ISSUER not set"; exit 1; }
 
 push:
 	docker build --platform linux/amd64 -t $(IMAGE) .
@@ -32,4 +32,4 @@ deploy: require-env setup push
 		--region $(GC_REGION) \
 		--service-account $(SA) \
 		--allow-unauthenticated --no-invoker-iam-check \
-		--set-env-vars "GC_PROJECT_ID=$(GC_PROJECT_ID),GC_REGION=$(GC_REGION),AGENT_ENGINE_NAME=$(AGENT_ENGINE_NAME),CORS_ORIGIN=$(CORS_ORIGIN),PINGONE_ISSUER=$(PINGONE_ISSUER)"
+		--set-env-vars "GC_PROJECT_ID=$(GC_PROJECT_ID),GC_REGION=$(GC_REGION),AGENT_ENGINE_ID=$(AGENT_ENGINE_ID),CORS_ORIGIN=$(CORS_ORIGIN),IDP_ISSUER=$(IDP_ISSUER)"

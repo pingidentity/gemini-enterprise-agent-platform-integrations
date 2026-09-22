@@ -21,9 +21,9 @@ This resource mints the final tool token (the extension's RFC 8693 exchange targ
 
 | Attribute | Required | Advanced Expression |
 |---|---|---|
-| `sub` | no | `${(#root.context.requestData.grantType == "client_credentials") ? "no-subject" : #root.context.requestData.subjectToken.sub}` |
-| `act` | yes | `${(#root.context.requestData.grantType == "client_credentials")?"noActor":((#root.context.requestData.subjectToken.may_act.sub == #root.context.requestData.actorToken.client_id)?{"sub":#root.context.requestData.actorToken.client_id,"act":#root.context.requestData.subjectToken.act}:null)}` |
-| `grant_type` | no | `${#root.context.requestData.grantType}` |
+| `sub` | no | `(#root.context.requestData.grantType == "client_credentials") ? "no-subject" : #root.context.requestData.subjectToken.sub` |
+| `act` | yes | `(#root.context.requestData.grantType == "client_credentials")?"noActor":((#root.context.requestData.subjectToken.may_act.sub == #root.context.requestData.actorToken.client_id)?{"sub":#root.context.requestData.actorToken.client_id,"act":#root.context.requestData.subjectToken.act}:null)` |
+| `grant_type` | no | `#root.context.requestData.grantType` |
 
 `sub` must be grant-type-aware: the extension's own `client_credentials` actor token mints on this resource too, and that grant has no `subjectToken`. `act` is Required and nested - it stamps `{"sub": actorToken.client_id, "act": subjectToken.act}` only if the subject token's `may_act.sub` matches the actor token's `client_id`, else `null` fails the exchange. Because this expression carries the subject token's `act` through, the terminal token holds the complete chain (extension → agent → `noActor`). **No `may_act`** - this resource is terminal; nothing ever exchanges further on top of its output.
 
@@ -45,8 +45,8 @@ cp .env.sample .env
 |---|---|
 | `GC_REGION` | GCP region, e.g. `us-central1` |
 | `GC_CLOUD_RUN_SERVICE_NAME` | Cloud Run service name, e.g. `aobou-stripe-mcp-server` |
+| `IDP_ISSUER` | PingOne issuer URL, e.g. `https://auth.pingone.<region>/<env>/as`. |
 | `STRIPE_SECRET_KEY` | Stripe secret key (`sk_...`) - stored in Secret Manager as `stripe-secret-key` |
-| `IDP_ISSUER` | PingOne issuer URL, e.g. `https://auth.pingone.com/<env-id>/as`. |
 | `IDP_REQUIRED_AUDIENCE` | Expected `aud` claim, e.g. `stripe-mcp-server` |
 | `IDP_REQUIRED_SCOPE` | Scope the inbound token must carry, e.g. `stripe_mcp:invoke` |
 

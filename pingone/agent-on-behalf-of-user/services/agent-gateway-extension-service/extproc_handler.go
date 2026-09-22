@@ -30,7 +30,8 @@ type shimConfig struct {
 	idpEndpoint       string
 	idpClientID       string
 	idpSecret         string
-	idpScope          string
+	toolScope         string
+	idpRequiredScope  string
 	idpAudience       string
 	authzEndpoint     string
 	authzClientID     string
@@ -44,13 +45,13 @@ func newShim(cfg shimConfig) *shim {
 			endpoint:     cfg.idpEndpoint,
 			clientID:     cfg.idpClientID,
 			clientSecret: cfg.idpSecret,
-			scope:        cfg.idpScope,
+			scope:        cfg.toolScope,
 		},
 	}
 
 	if cfg.idpAudience != "" {
 		ctx := context.Background()
-		if v, err := newDelegatedTokenValidator(ctx, cfg.idpEndpoint, cfg.idpAudience, cfg.idpScope); err != nil {
+		if v, err := newDelegatedTokenValidator(ctx, cfg.idpEndpoint, cfg.idpAudience, cfg.idpRequiredScope); err != nil {
 			log.Printf("[ExtSvc] WARNING: token validator init failed: %v — inbound token validation disabled", err)
 		} else {
 			s.tokenValidator = v
@@ -67,11 +68,11 @@ func newShim(cfg shimConfig) *shim {
 	}
 	if envID != "" && apiBase != "" {
 		s.userResolver = &pingoneUserResolver{
-			envID:        envID,
-			apiBase:      apiBase,
+			envID:         envID,
+			apiBase:       apiBase,
 			tokenEndpoint: cfg.idpEndpoint,
-			clientID:     cfg.authzClientID,
-			clientSecret: cfg.authzClientSecret,
+			clientID:      cfg.authzClientID,
+			clientSecret:  cfg.authzClientSecret,
 		}
 		log.Printf("[ExtSvc] user email resolver enabled (envID=%s)", envID)
 	}
@@ -88,7 +89,7 @@ func newShim(cfg shimConfig) *shim {
 		log.Println("[ExtSvc] WARNING: AUTHZ_DECISION_ENDPOINT not set — skipping PingOne Authorize check")
 	}
 	if !s.configured() {
-		log.Println("[ExtSvc] WARNING: TOOL_URL / IDP_TOKEN_ENDPOINT / IDP_CLIENT_ID / IDP_CLIENT_SECRET incomplete — tool requests will be denied")
+		log.Println("[ExtSvc] WARNING: TOOL_URL / IDP_TOKEN_ENDPOINT / EXCHANGE_CLIENT_ID / EXCHANGE_CLIENT_SECRET incomplete — tool requests will be denied")
 	}
 	return s
 }

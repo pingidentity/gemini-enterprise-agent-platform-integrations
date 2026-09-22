@@ -24,8 +24,7 @@ This resource mints the user's login token (the Chat UI's authorization code flo
 
 | Attribute | Required | Advanced Expression |
 |---|---|---|
-| `sub` | no | `${user.id}` |
-| `may_act` | no | `${{"sub":"<AGENT-CLIENT-ID>"}}` |
+| `may_act` | no | `{"sub":"<AGENT-CLIENT-ID>"}` |
 
 No `act` attribute is needed here: nothing has acted yet at login, and the gateway resource's `act` expression tolerates the resulting null when it nests the chain. `may_act` is a flat constant naming the agent as the sole next actor - this is what the gateway resource's `act` check compares against at exchange time. The default `sub` mapping (`${user.id}`) is correct here because only `authorization_code` ever mints on this resource; `#root.user.id` resolves the logged-in user directly.
 
@@ -40,12 +39,12 @@ cp .env.sample .env
 | `GC_PROJECT_ID` | Target project ID |
 | `GC_REGION` | Deploy region, e.g. `us-central1` |
 | `AGENT_DISPLAY_NAME` | Display name for the Reasoning Engine, e.g. `aobou-financial-agent` |
+| `IDP_ISSUER` | PingOne issuer base, e.g. `https://auth.pingone.<region>/<env-id>/as` |
 | `GC_AGENT_GATEWAY` | Full gateway path: `projects/<id>/locations/<region>/agentGateways/<name>` |
+| `AGENT_CLIENT_ID` | Agent's PingOne client ID (the Financial Agent app) |
+| `AGENT_CLIENT_SECRET` | Agent's PingOne client secret |
 | `TOOL_MCP_URL` | The Stripe MCP tool's `/mcp` endpoint |
-| `AGENT_IDP_TOKEN_ENDPOINT` | PingOne token endpoint, e.g. `https://auth.pingone.<region>/<env-id>/as/token` |
-| `AGENT_IDP_CLIENT_ID` | Agent's PingOne client ID |
-| `AGENT_IDP_CLIENT_SECRET` | Agent's PingOne client secret |
-| `AGENT_IDP_SCOPE` | Scope to request on the delegated token, e.g. `stripe_mcp:invoke` |
+| `TOOL_SCOPE` | Scope requested on the outbound delegated token; the extension's `IDP_REQUIRED_SCOPE` must match |
 
 ## Deploy
 

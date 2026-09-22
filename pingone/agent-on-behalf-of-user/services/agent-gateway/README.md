@@ -6,7 +6,6 @@ The Agent Gateway is a **Google-managed** resource. You create it in the console
 
 ```bash
 cp .env.sample .env
-make attach
 ```
 
 | Variable | Value |
@@ -27,6 +26,7 @@ In the console: **Agent Platform → Govern → Gateways → Add gateway**.
 | **Deployment mode** | Google-managed |
 | **Governed Access Path** | Agent-to-Anywhere (egress) |
 | **Access Authorization** | Enforce policies |
+| **Policy Model** | Allow Policy |
 
 ## 3. Attach the extension service
 
@@ -88,10 +88,10 @@ This resource mints the agent's delegated token (the agent's RFC 8693 exchange t
 
 | Attribute | Required | Advanced Expression |
 |---|---|---|
-| `sub` | no | `${(#root.context.requestData.grantType == "client_credentials") ? "no-subject" : #root.context.requestData.subjectToken.sub}` |
-| `act` | yes | `${(#root.context.requestData.grantType == "client_credentials")?"noActor":((#root.context.requestData.subjectToken.may_act.sub == #root.context.requestData.actorToken.client_id)?{"sub":#root.context.requestData.actorToken.client_id,"act":#root.context.requestData.subjectToken.act}:null)}` |
-| `may_act` | no | `${{"sub":"<EXT-SVC-CLIENT-ID>"}}` |
-| `grant_type` | no | `${#root.context.requestData.grantType}` |
+| `sub` | no | `(#root.context.requestData.grantType == "client_credentials") ? "no-subject" : #root.context.requestData.subjectToken.sub` |
+| `act` | yes | `(#root.context.requestData.grantType == "client_credentials")?"noActor":((#root.context.requestData.subjectToken.may_act.sub == #root.context.requestData.actorToken.client_id)?{"sub":#root.context.requestData.actorToken.client_id,"act":#root.context.requestData.subjectToken.act}:null)` |
+| `may_act` | no | `{"sub":"<agent-gw-extension-client-id>"}` |
+| `grant_type` | no | `#root.context.requestData.grantType` |
 
 `sub` must be grant-type-aware: the agent's own `client_credentials` actor token (needed before it can act as an exchange actor) mints on this resource too, and that grant has no `subjectToken`. `act` is Required, which is what makes the delegation enforceable - the expression returns `null` (failing the exchange) unless the subject token's `may_act.sub` matches the actor token's `client_id`, and otherwise nests the subject token's own `act` one level deeper. `may_act` is a flat constant licensing the extension service as the sole next actor. `grant_type` makes every token self-describe how it was minted.
 

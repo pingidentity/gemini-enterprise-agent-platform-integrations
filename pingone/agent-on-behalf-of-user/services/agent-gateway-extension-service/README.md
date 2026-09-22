@@ -74,14 +74,15 @@ cp .env.sample .env
 | `GC_REGION` | Deploy region, e.g. `us-central1` |
 | `GC_CLOUD_RUN_SERVICE_NAME` | `aobou-agent-gateway-extension-service` |
 | `IDP_TOKEN_ENDPOINT` | `https://auth.pingone.<region>/<env-id>/as/token` |
-| `IDP_CLIENT_ID` | Token-exchange app Client ID |
-| `IDP_CLIENT_SECRET` | Token-exchange app Client Secret |
-| `IDP_SCOPE` | Scope requested on the outbound tool token, e.g. `stripe_mcp:invoke` |
-| `IDP_REQUIRED_AUDIENCE` | Expected `aud` on the **inbound** delegated token. That token is audienced to the gateway resource, so this is `google-agent-gateway` - not the MCP tool's audience |
-| `TOOL_URL` | The Stripe MCP tool's Cloud Run base URL |
-| `AUTHZ_DECISION_ENDPOINT` | PingOne Authorize decision endpoint URL |
+| `EXCHANGE_CLIENT_ID` | Token-exchange app Client ID (the exchange actor) |
+| `EXCHANGE_CLIENT_SECRET` | Token-exchange app Client Secret |
 | `AUTHZ_CLIENT_ID` | Authorize worker app Client ID |
 | `AUTHZ_CLIENT_SECRET` | Authorize worker app Client Secret |
+| `AUTHZ_DECISION_ENDPOINT` | PingOne Authorize decision endpoint URL |
+| `IDP_REQUIRED_AUDIENCE` | Expected `aud` on the **inbound** delegated token |
+| `IDP_REQUIRED_SCOPE` | Scope the inbound delegated token must carry |
+| `TOOL_URL` | The Stripe MCP tool's Cloud Run base URL |
+| `TOOL_SCOPE` | Scope requested on the outbound tool token |
 
 ## Deploy
 

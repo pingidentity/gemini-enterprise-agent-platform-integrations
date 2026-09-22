@@ -4,17 +4,15 @@
 """
 
 import os
-from pathlib import Path
 
 import vertexai
 from vertexai import agent_engines
-from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent / "services" / "agent" / ".env")
+PROJECT_ID = os.environ.get("GC_PROJECT_ID", "your-project-id")
+LOCATION = os.environ.get("GC_REGION", "us-central1")
+DISPLAY_NAME = os.environ.get("AGENT_DISPLAY_NAME", "baatt-crm-agent")
 
-vertexai.init(project=os.environ["GC_PROJECT_ID"], location=os.environ["GC_REGION"])
-
-DISPLAY_NAME = os.environ["AGENT_DISPLAY_NAME"]
+vertexai.init(project=PROJECT_ID, location=LOCATION)
 
 matches = list(agent_engines.list(filter=f'display_name="{DISPLAY_NAME}"'))
 if not matches:

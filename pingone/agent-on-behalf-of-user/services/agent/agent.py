@@ -1,22 +1,18 @@
-"""OBO agent — ADK agent deployed on Agent Runtime (Agent Engine)."""
-
 import os
-
 from google.adk.agents import Agent
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 from pingone import mcp_headers
 
-TOOL_MCP_URL = os.environ.get("TOOL_MCP_URL", "")
 
 stripe_tool = McpToolset(
-    connection_params=StreamableHTTPConnectionParams(url=TOOL_MCP_URL),
+    connection_params=StreamableHTTPConnectionParams(url=os.environ.get("TOOL_MCP_URL", "")),
     header_provider=mcp_headers,
 )
 
 root_agent = Agent(
     model="gemini-2.5-flash",
-    name="obo_agent",
+    name="aobou_financial_agent",
     description="Financial agent that purchases Stripe products on behalf of an authenticated user.",
     instruction=(
         "You are a financial agent acting on behalf of an authenticated user. "

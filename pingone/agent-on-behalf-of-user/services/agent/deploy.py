@@ -21,10 +21,10 @@ REGION = os.environ["GC_REGION"]
 TOOL_MCP_URL = os.environ["TOOL_MCP_URL"]
 AGENT_GATEWAY = os.environ["GC_AGENT_GATEWAY"]
 AGENT_DISPLAY_NAME = os.environ["AGENT_DISPLAY_NAME"]
-AGENT_IDP_TOKEN_ENDPOINT = os.environ["AGENT_IDP_TOKEN_ENDPOINT"]
-AGENT_IDP_CLIENT_ID = os.environ["AGENT_IDP_CLIENT_ID"]
-AGENT_IDP_CLIENT_SECRET = os.environ["AGENT_IDP_CLIENT_SECRET"]
-AGENT_IDP_SCOPE = os.environ.get("AGENT_IDP_SCOPE", "")
+IDP_ISSUER = os.environ["IDP_ISSUER"].rstrip("/")
+AGENT_CLIENT_ID = os.environ["AGENT_CLIENT_ID"]
+AGENT_CLIENT_SECRET = os.environ["AGENT_CLIENT_SECRET"]
+TOOL_SCOPE = os.environ.get("TOOL_SCOPE", "")
 
 
 def staging_bucket() -> str:
@@ -103,10 +103,10 @@ _config = {
     "env_vars": {
         "TOOL_MCP_URL": TOOL_MCP_URL,
         "GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES": "false",
-        "AGENT_IDP_TOKEN_ENDPOINT": AGENT_IDP_TOKEN_ENDPOINT,
-        "AGENT_IDP_CLIENT_ID": AGENT_IDP_CLIENT_ID,
-        "AGENT_IDP_CLIENT_SECRET": AGENT_IDP_CLIENT_SECRET,
-        "AGENT_IDP_SCOPE": AGENT_IDP_SCOPE,
+        "IDP_ISSUER": IDP_ISSUER,
+        "AGENT_CLIENT_ID": AGENT_CLIENT_ID,
+        "AGENT_CLIENT_SECRET": AGENT_CLIENT_SECRET,
+        "TOOL_SCOPE": TOOL_SCOPE,
     },
 }
 
@@ -124,4 +124,5 @@ for attempt in range(1, 11):
 
 resource_name = remote_agent.api_resource.name
 print("Deployed agent:", resource_name)
+print(f"Engine ID for the agent-bridge's .env (AGENT_ENGINE_ID): {resource_name.split('/')[-1]}")
 grant_egress(resource_name)

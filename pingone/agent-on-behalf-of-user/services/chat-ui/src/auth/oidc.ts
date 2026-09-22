@@ -1,7 +1,7 @@
 /**
  * OIDC Authentication (PKCE)
  *
- * Implements the Authorization Code flow with PKCE against PingOne AIC.
+ * Implements the Authorization Code flow with PKCE against PingOne.
  * This is a public client (no client secret) — the code verifier/challenge
  * prevents authorization code interception.
  *
@@ -24,7 +24,7 @@ interface IdTokenClaims {
   [key: string]: unknown;
 }
 
-const AIC_ISSUER = import.meta.env.VITE_AIC_ISSUER as string;
+const IDP_ISSUER = (import.meta.env.VITE_IDP_ISSUER as string) || (import.meta.env.VITE_AIC_ISSUER as string) || "";
 const CLIENT_ID = import.meta.env.VITE_CLIENT_ID as string;
 const REDIRECT_URI = import.meta.env.VITE_REDIRECT_URI as string;
 const SCOPES = (import.meta.env.VITE_SCOPES as string) || 'openid profile email stripe_mcp:invoke';
@@ -61,7 +61,7 @@ function parseJwt(token: string): IdTokenClaims {
   return JSON.parse(atob(base64));
 }
 
-/** Redirect to PingOne AIC authorization endpoint with PKCE challenge. */
+/** Redirect to the PingOne authorization endpoint with PKCE challenge. */
 export async function login(): Promise<void> {
   const verifier = generateRandomString(64);
   sessionStorage.setItem(STORAGE_KEYS.codeVerifier, verifier);
@@ -77,10 +77,10 @@ export async function login(): Promise<void> {
     prompt: 'login',
   });
 
-  window.location.href = `${AIC_ISSUER}/authorize?${params}`;
+  window.location.href = `${IDP_ISSUER}/authorize?${params}`;
 }
 
-/** Exchange the authorization code for tokens after AIC redirects back. */
+/** Exchange the authorization code for tokens after the IdP redirects back. */
 export async function handleCallback(): Promise<boolean> {
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
@@ -97,7 +97,7 @@ export async function handleCallback(): Promise<boolean> {
     code_verifier: verifier,
   });
 
-  const res = await fetch(`${AIC_ISSUER}/token`, {
+  const res = await fetch(`${IDP_ISSUER}/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
@@ -145,5 +145,5 @@ export function logout(): void {
   const idToken = sessionStorage.getItem(STORAGE_KEYS.idToken);
   Object.values(STORAGE_KEYS).forEach((k) => sessionStorage.removeItem(k));
   const postLogoutUri = encodeURIComponent(window.location.origin);
-  window.location.href = `${AIC_ISSUER}/signoff?id_token_hint=${idToken ?? ''}&post_logout_redirect_uri=${postLogoutUri}`;
+  window.location.href = `${IDP_ISSUER}/signoff?id_token_hint=${idToken ?? ''}&post_logout_redirect_uri=${postLogoutUri}`;
 }

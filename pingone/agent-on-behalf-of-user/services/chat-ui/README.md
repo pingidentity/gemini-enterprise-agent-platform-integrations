@@ -25,11 +25,11 @@ cp .env.sample .env
 |---|---|
 | `GC_REGION` | Deploy region, e.g. `us-central1` |
 | `GC_CLOUD_RUN_SERVICE_NAME` | Cloud Run service name, e.g. `aobou-chat-ui` |
-| `VITE_AIC_ISSUER` | `https://auth.pingone.<region>/<env-id>/as` |
+| `VITE_IDP_ISSUER` | PingOne issuer base, e.g. `https://auth.pingone.<region>/<env-id>/as` |
 | `VITE_CLIENT_ID` | Chat UI PingOne app Client ID |
-| `VITE_REDIRECT_URI` | Chat UI Cloud Run URL |
-| `VITE_SCOPES` | `openid profile email stripe_mcp:invoke` |
+| `VITE_REDIRECT_URI` | Chat UI Cloud Run URL (must byte-match the redirect URI on the PingOne app) |
 | `VITE_AGENT_BRIDGE_URL` | Agent Bridge Cloud Run URL |
+| `VITE_SCOPES` | `openid profile email stripe_mcp:invoke` |
 
 ## Deploy
 
