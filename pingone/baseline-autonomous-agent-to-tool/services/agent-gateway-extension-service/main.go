@@ -14,11 +14,11 @@ import (
 	"log"
 	"net"
 	"os"
+
 	// Embedded tz database — the distroless runtime ships no OS tzdata, and
 	// currentHour() resolves America/Vancouver (business-hours clock).
 	_ "time/tzdata"
 
-	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
@@ -26,19 +26,15 @@ import (
 )
 
 func main() {
-	_ = godotenv.Load() // local dev convenience; absent on Cloud Run
-
-	port := os.Getenv("GRPC_PORT")
-	if port == "" {
-		port = "50051"
-	}
+	port := "50051"
 
 	shim := newShim(shimConfig{
 		toolURL:           os.Getenv("TOOL_URL"),
 		idpEndpoint:       os.Getenv("IDP_TOKEN_ENDPOINT"),
-		idpClientID:       os.Getenv("IDP_CLIENT_ID"),
-		idpSecret:         os.Getenv("IDP_CLIENT_SECRET"),
-		idpScope:          os.Getenv("IDP_SCOPE"),
+		idpClientID:       os.Getenv("EXCHANGE_CLIENT_ID"),
+		idpSecret:         os.Getenv("EXCHANGE_CLIENT_SECRET"),
+		toolScope:         os.Getenv("TOOL_SCOPE"),
+		idpRequiredScope:  os.Getenv("IDP_REQUIRED_SCOPE"),
 		idpAudience:       os.Getenv("IDP_REQUIRED_AUDIENCE"),
 		authzEndpoint:     os.Getenv("AUTHZ_DECISION_ENDPOINT"),
 		authzClientID:     os.Getenv("AUTHZ_CLIENT_ID"),

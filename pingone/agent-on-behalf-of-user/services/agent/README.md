@@ -26,7 +26,7 @@ This resource mints the user's login token (the Chat UI's authorization code flo
 |---|---|---|
 | `may_act` | no | `{"sub":"<AGENT-CLIENT-ID>"}` |
 
-No `act` attribute is needed here: nothing has acted yet at login, and the gateway resource's `act` expression tolerates the resulting null when it nests the chain. `may_act` is a flat constant naming the agent as the sole next actor - this is what the gateway resource's `act` check compares against at exchange time. The default `sub` mapping (`${user.id}`) is correct here because only `authorization_code` ever mints on this resource; `#root.user.id` resolves the logged-in user directly.
+`may_act` is a flat constant naming the agent as the sole next actor - this is what the gateway resource's `act` check compares against at exchange time.
 
 **3. Fill in `.env`:**
 

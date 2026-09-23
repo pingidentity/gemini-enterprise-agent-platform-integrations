@@ -124,7 +124,7 @@ Follow the instructions in [agent](services/agent/README.md) to create the agent
 Trigger a test restock from the baseline root:
 
 ```bash
-services/agent/.venv/bin/python trigger.py
+make test
 ```
 
 A successful run ends with the agent reporting back, for example:

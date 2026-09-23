@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,6 +12,10 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jws"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
+
+// errInsufficientScope marks a token that verified but lacks the required
+// scopes — RFC 6750 maps that to 403, not 401.
+var errInsufficientScope = errors.New("insufficient scope")
 
 var (
 	idpIssuer         string
@@ -72,7 +77,7 @@ func validateToken(bearerHeader string) (jwt.Token, error) {
 	}
 	for _, required := range requiredScopeList() {
 		if _, ok := grantedSet[required]; !ok {
-			return nil, fmt.Errorf("token is missing required scope %q", required)
+			return nil, fmt.Errorf("%w: missing required scope %q", errInsufficientScope, required)
 		}
 	}
 

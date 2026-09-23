@@ -3,9 +3,9 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /agent-gateway-extension-service .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /baatt-agent-gateway-extension-service .
 
 FROM gcr.io/distroless/static-debian12
-COPY --from=builder /agent-gateway-extension-service /agent-gateway-extension-service
+COPY --from=builder /baatt-agent-gateway-extension-service /baatt-agent-gateway-extension-service
 EXPOSE 50051
-ENTRYPOINT ["/agent-gateway-extension-service"]
+ENTRYPOINT ["/baatt-agent-gateway-extension-service"]

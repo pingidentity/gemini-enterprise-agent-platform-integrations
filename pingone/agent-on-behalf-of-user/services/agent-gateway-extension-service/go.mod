@@ -1,4 +1,4 @@
-module github.com/agent-gateway-demos/obo-agent-gateway-extension-service
+module aobou-agent-gateway-extension-service
 
 go 1.25.0
 

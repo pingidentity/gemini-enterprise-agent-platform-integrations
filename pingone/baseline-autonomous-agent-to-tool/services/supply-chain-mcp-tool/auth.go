@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,6 +17,10 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jws"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
+
+// errInsufficientScope marks a token that verified but lacks the required
+// scope — RFC 6750 maps that to 403, not 401.
+var errInsufficientScope = errors.New("insufficient scope")
 
 type tokenValidator struct {
 	issuer        string
@@ -69,6 +74,7 @@ func (v *tokenValidator) middleware(next http.Handler) http.Handler {
 		authHeader := r.Header.Get("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			log.Printf("[SupplyChain] REJECT — no Bearer token")
+			w.Header().Set("WWW-Authenticate", `Bearer realm="supply-chain-mcp-tool"`)
 			http.Error(w, "missing Bearer token", http.StatusUnauthorized)
 			return
 		}
@@ -76,7 +82,19 @@ func (v *tokenValidator) middleware(next http.Handler) http.Handler {
 		tok, err := v.verify(r.Context(), strings.TrimPrefix(authHeader, "Bearer "))
 		if err != nil {
 			log.Printf("[SupplyChain] REJECT — %v", err)
-			http.Error(w, "invalid token: "+err.Error(), http.StatusForbidden)
+			// RFC 6750: a malformed/expired token is 401 with an
+			// error="invalid_token" challenge; a valid token lacking the
+			// required scope is 403 with error="insufficient_scope". The
+			// validation detail goes to the log only — never echoed to the
+			// caller.
+			if errors.Is(err, errInsufficientScope) {
+				w.Header().Set("WWW-Authenticate",
+					fmt.Sprintf(`Bearer error="insufficient_scope", scope=%q`, v.requiredScope))
+				http.Error(w, "insufficient scope", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
 
@@ -118,7 +136,7 @@ func (v *tokenValidator) verify(ctx context.Context, raw string) (jwt.Token, err
 	}
 
 	if !hasScope(tok, v.requiredScope) {
-		return nil, fmt.Errorf("missing required scope %q", v.requiredScope)
+		return nil, fmt.Errorf("%w: missing required scope %q", errInsufficientScope, v.requiredScope)
 	}
 	return tok, nil
 }

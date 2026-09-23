@@ -1,15 +1,17 @@
-"""PingOne client_credentials token provider for the agent's MCP requests."""
+"""Mints the agent's PingOne identity token and attaches it to every MCP request.
 
-import os
+The agent authenticates as itself (client_credentials, no user context — this is
+the autonomous-agent journey). The gateway's extension service validates this
+token, asks PingOne Authorize for a PERMIT/DENY, then exchanges it for a
+tool-scoped token before the request reaches the MCP tool. Caching: one token,
+refreshed 30s before expiry, guarded by a lock because ADK runs concurrent
+async tool calls.
+"""
+
 import threading
 import time
-
 import httpx
-
-_TOKEN_ENDPOINT = os.environ.get("AGENT_IDP_TOKEN_ENDPOINT", "")
-_CLIENT_ID = os.environ.get("AGENT_IDP_CLIENT_ID", "")
-_CLIENT_SECRET = os.environ.get("AGENT_IDP_CLIENT_SECRET", "")
-_SCOPE = os.environ.get("AGENT_IDP_SCOPE", "")
+from config import AGENT_CLIENT_ID, AGENT_CLIENT_SECRET, TOKEN_ENDPOINT, TOOL_SCOPE
 
 _lock = threading.Lock()
 _cached_token = ""
@@ -17,14 +19,10 @@ _expires_at = 0.0
 
 
 def _fetch_token() -> str:
-    data = {"grant_type": "client_credentials"}
-    if _SCOPE:
-        data["scope"] = _SCOPE
-
     resp = httpx.post(
-        _TOKEN_ENDPOINT,
-        data=data,
-        auth=(_CLIENT_ID, _CLIENT_SECRET),
+        TOKEN_ENDPOINT,
+        data={"grant_type": "client_credentials", "scope": TOOL_SCOPE},
+        auth=(AGENT_CLIENT_ID, AGENT_CLIENT_SECRET),
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=15,
     )
@@ -52,10 +50,8 @@ def get_token() -> str:
 
 def mcp_headers(_ctx) -> dict[str, str]:
     """ADK header_provider: attach the agent's PingOne token to MCP requests."""
-    headers = {
+    return {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
+        "Authorization": f"Bearer {get_token()}",
     }
-    if _TOKEN_ENDPOINT and _CLIENT_ID and _CLIENT_SECRET:
-        headers["Authorization"] = f"Bearer {get_token()}"
-    return headers

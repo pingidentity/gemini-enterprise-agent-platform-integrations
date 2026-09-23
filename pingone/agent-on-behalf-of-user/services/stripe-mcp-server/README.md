@@ -61,10 +61,10 @@ make deploy
 ## Register
 
 Register the server in the Agent Registry (Agent Platform → Govern → Agent Registry → Add MCP Server):
-- **Name:** `aobou-stripe-mcp-server`
+- **Name:** `AOBOU Stripe MCP Server`
 - **Description:** Stripe MCP server for the Agent On-Behalf-Of User demo
 - **Region:** Same as Cloud Run deployment (e.g. `us-central1`)
 - **MCP Server URL:** `<Cloud Run service URL>/mcp`
-- **Tool specification JSON:** Paste the contents of `tool-spec.json`
+- **Tool specification JSON:** Paste the contents of `tool-spec.json` — keep it in sync with the `mcp.NewTool` definitions in `mcp_tools.go`; whenever those change, update `tool-spec.json` and re-register in the Agent Registry.
 
 ![Stripe MCP Server GCP Config](../../../../_docs/agent-on-behalf-of-user/stripe-mcp-server-gcp-config.png)

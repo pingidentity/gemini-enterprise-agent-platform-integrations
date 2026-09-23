@@ -1,10 +1,9 @@
-module github.com/agent-gateway-demos/agent-gateway-extension-service
+module baatt-agent-gateway-extension-service
 
 go 1.25.0
 
 require (
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
-	github.com/joho/godotenv v1.5.1
 	github.com/lestrrat-go/jwx/v2 v2.1.7
 	google.golang.org/grpc v1.83.2
 )

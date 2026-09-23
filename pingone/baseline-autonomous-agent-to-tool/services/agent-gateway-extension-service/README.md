@@ -64,14 +64,15 @@ cp .env.sample .env
 | `GC_REGION` | Deploy region, e.g. `us-central1` |
 | `GC_CLOUD_RUN_SERVICE_NAME` | `baatt-agent-gateway-extension-service` |
 | `IDP_TOKEN_ENDPOINT` | `https://auth.pingone.<region>/<env-id>/as/token` |
-| `IDP_CLIENT_ID` | Token-exchange worker app Client ID |
-| `IDP_CLIENT_SECRET` | Token-exchange worker app Client Secret |
-| `IDP_SCOPE` | Scope the inbound token must carry, e.g. `supply-chain:restock` |
-| `IDP_REQUIRED_AUDIENCE` | Expected `aud` on the inbound token, e.g. `supply-chain-mcp-tool` |
-| `TOOL_URL` | The MCP tool's Cloud Run base URL |
-| `AUTHZ_DECISION_ENDPOINT` | PingOne Authorize decision endpoint URL |
+| `EXCHANGE_CLIENT_ID` | Token-exchange worker app Client ID (the exchange actor) |
+| `EXCHANGE_CLIENT_SECRET` | Token-exchange worker app Client Secret |
 | `AUTHZ_CLIENT_ID` | Authorize worker app Client ID |
 | `AUTHZ_CLIENT_SECRET` | Authorize worker app Client Secret |
+| `AUTHZ_DECISION_ENDPOINT` | PingOne Authorize decision endpoint URL |
+| `IDP_REQUIRED_AUDIENCE` | Expected `aud` on the inbound token, e.g. `supply-chain-mcp-tool` |
+| `IDP_REQUIRED_SCOPE` | Scope the inbound agent token must carry, e.g. `supply-chain:restock` |
+| `TOOL_URL` | The MCP tool's Cloud Run base URL |
+| `TOOL_SCOPE` | Scope requested on the outbound tool token, e.g. `supply-chain:restock` |
 
 ## Deploy
 

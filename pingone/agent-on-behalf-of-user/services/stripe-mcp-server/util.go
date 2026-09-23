@@ -15,4 +15,3 @@ func requireEnv(key string) string {
 	}
 	return val
 }
-

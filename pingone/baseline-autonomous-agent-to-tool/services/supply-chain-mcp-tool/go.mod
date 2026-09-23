@@ -1,4 +1,4 @@
-module github.com/agent-gateway-demos/supply-chain-mcp-tool
+module baatt-supply-chain-mcp-tool
 
 go 1.25.0
 

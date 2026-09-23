@@ -1,4 +1,4 @@
-module stripe-mcp-server
+module aobou-stripe-mcp-server
 
 go 1.25.4
 

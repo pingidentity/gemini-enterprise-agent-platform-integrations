@@ -34,7 +34,7 @@ func main() {
 	mux.Handle("/mcp", validator.middleware(mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return server }, nil,
 	)))
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 

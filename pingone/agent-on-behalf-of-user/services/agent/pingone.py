@@ -1,28 +1,24 @@
-"""PingOne RFC 8693 token provider for the OBO agent's MCP requests.
+"""Exchanges the user's login token for a delegated token and attaches it to every MCP request.
 
-The agent bridge validates the user's token and stores it in ADK session state
-under "user_token". This module reads that token, exchanges it for a delegated
-token (sub=user, act.client_id=agent) using the agent's own PingOne credentials,
-and attaches the result to every outbound MCP request.
+The bridge stores the user's PingOne token in ADK session state under
+"user_token". On each request this module swaps it via RFC 8693 — the user's
+token as subject, the agent's own client_credentials token as actor — producing
+a delegated token (sub=user, act.sub=agent). The gateway's extension service
+validates it, asks PingOne Authorize, and exchanges it again for a tool-scoped
+token before the request reaches the Stripe MCP server. The delegated token is
+cached per user (30s before expiry, guarded by a lock for concurrent requests).
 """
 
 import logging
-import os
 import threading
 import time
-
 import httpx
-
-_ISSUER = os.environ["IDP_ISSUER"].rstrip("/")
-_TOKEN_ENDPOINT = f"{_ISSUER}/token"
-_CLIENT_ID = os.environ["AGENT_CLIENT_ID"]
-_CLIENT_SECRET = os.environ["AGENT_CLIENT_SECRET"]
-_SCOPE = os.environ["TOOL_SCOPE"]
+from config import AGENT_CLIENT_ID, AGENT_CLIENT_SECRET, TOKEN_ENDPOINT, TOOL_SCOPE
 
 _lock = threading.Lock()
 _actor_token = ""
 _actor_expires_at = 0.0
-# Maps subject user_token → (delegated_token, expires_at)
+# Maps subject user_token -> (delegated_token, expires_at)
 _delegated_cache: dict[str, tuple[str, float]] = {}
 
 
@@ -33,9 +29,9 @@ def _get_actor_token() -> str:
     if _actor_token and now < _actor_expires_at:
         return _actor_token
     resp = httpx.post(
-        _TOKEN_ENDPOINT,
+        TOKEN_ENDPOINT,
         data={"grant_type": "client_credentials"},
-        auth=(_CLIENT_ID, _CLIENT_SECRET),
+        auth=(AGENT_CLIENT_ID, AGENT_CLIENT_SECRET),
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=15,
     )
@@ -47,22 +43,20 @@ def _get_actor_token() -> str:
 
 
 def _exchange(user_token: str) -> tuple[str, int]:
-    """RFC 8693: exchange user token (subject) + agent token (actor) → delegated token."""
+    """RFC 8693: exchange user token (subject) + agent token (actor) -> delegated token."""
     actor = _get_actor_token()
-    data: dict[str, str] = {
-        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-        "subject_token": user_token,
-        "subject_token_type": "urn:ietf:params:oauth:token-type:access_token",
-        "actor_token": actor,
-        "actor_token_type": "urn:ietf:params:oauth:token-type:access_token",
-        "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
-    }
-    if _SCOPE:
-        data["scope"] = _SCOPE
     resp = httpx.post(
-        _TOKEN_ENDPOINT,
-        data=data,
-        auth=(_CLIENT_ID, _CLIENT_SECRET),
+        TOKEN_ENDPOINT,
+        data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+            "subject_token": user_token,
+            "subject_token_type": "urn:ietf:params:oauth:token-type:access_token",
+            "actor_token": actor,
+            "actor_token_type": "urn:ietf:params:oauth:token-type:access_token",
+            "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
+            "scope": TOOL_SCOPE,
+        },
+        auth=(AGENT_CLIENT_ID, AGENT_CLIENT_SECRET),
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=15,
     )
@@ -100,20 +94,13 @@ def mcp_headers(ctx) -> dict[str, str]:
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
     }
-    if not (_TOKEN_ENDPOINT and _CLIENT_ID and _CLIENT_SECRET):
-        return headers
-
     user_token = ctx.state.get("user_token", "") if ctx and hasattr(ctx, "state") else ""
-
     try:
         if user_token:
-            # Normal request: exchange for a delegated token on behalf of the user.
             token = get_delegated_token(user_token)
         else:
-            # Tool discovery (no user context yet): use the agent's own token.
             token = _get_actor_token()
         headers["Authorization"] = f"Bearer {token}"
     except Exception as exc:
         logging.warning("Failed to get MCP auth token: %s", exc)
-
     return headers
