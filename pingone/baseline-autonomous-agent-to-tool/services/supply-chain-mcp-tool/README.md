@@ -50,6 +50,6 @@ Register the server in the Agent Registry (Agent Platform → Govern → Agent R
 - **Description:** Simple Restock tool for BAATT demo
 - **Region:** Same as Cloud Run deployment (`us-central1`)
 - **MCP Server URL:** `<URL of Cloud Run MCP Server>/mcp`
-- **Tool specification JSON:** Paste the contents of `tool-spec.json` — keep it in sync with the `RestockInput`/`RestockOutput` struct tags in `restock.go`; whenever those change, update `tool-spec.json` and re-register in the Agent Registry.
+- **Tool specification JSON:** Paste the contents of `tool-spec.json` — keep it in sync with the `RestockInput`/`RestockOutput` struct tags in `mcp_tools.go`; whenever those change, update `tool-spec.json` and re-register in the Agent Registry.
 
 ![Supply Chain MCP Tool GCP Config](../../../../_docs/baseline-autonomous-agent-to-tool/supply-chain-mcp-tool-gcp-config.png)

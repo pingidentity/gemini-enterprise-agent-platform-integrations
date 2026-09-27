@@ -24,7 +24,7 @@ func listStripeProductsTool() (mcp.Tool, server.ToolHandlerFunc) {
 		mcp.WithDescription("List all active products from the Stripe catalog, including their prices."),
 	)
 	handler := func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		email, _ := ctx.Value(ctxKeyCallerEmail).(string)
+		email := callerEmailFromCtx(ctx)
 		log.Printf("[SupplyChain] tool=list_stripe_products — caller=%s", email)
 		products, err := fetchProductsFromStripe()
 		if err != nil {
@@ -46,7 +46,7 @@ func getStripeProductTool() (mcp.Tool, server.ToolHandlerFunc) {
 		),
 	)
 	handler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		email, _ := ctx.Value(ctxKeyCallerEmail).(string)
+		email := callerEmailFromCtx(ctx)
 		productID, err := req.RequireString("product_id")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -68,8 +68,8 @@ func getStripeCustomerTool() (mcp.Tool, server.ToolHandlerFunc) {
 		mcp.WithDescription("Look up the authenticated user's Stripe customer record and return their saved payment method details (card brand and last 4 digits). Call this before create_payment_intent to confirm the card with the user."),
 	)
 	handler := func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		customerEmail, ok := ctx.Value(ctxKeyCallerEmail).(string)
-		if !ok || customerEmail == "" {
+		customerEmail := callerEmailFromCtx(ctx)
+		if customerEmail == "" {
 			return mcp.NewToolResultError("could not determine user email from auth token"), nil
 		}
 		log.Printf("[SupplyChain] tool=get_stripe_customer — caller=%s", customerEmail)
@@ -126,8 +126,8 @@ func createStripePaymentIntentTool() (mcp.Tool, server.ToolHandlerFunc) {
 		),
 	)
 	handler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		customerEmail, ok := ctx.Value(ctxKeyCallerEmail).(string)
-		if !ok || customerEmail == "" {
+		customerEmail := callerEmailFromCtx(ctx)
+		if customerEmail == "" {
 			return mcp.NewToolResultError("could not determine user email from auth token"), nil
 		}
 

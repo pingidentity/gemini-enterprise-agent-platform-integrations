@@ -24,8 +24,10 @@ setup: require-env
 	gcloud services enable run.googleapis.com iam.googleapis.com
 	@gcloud iam service-accounts describe $(SA) >/dev/null 2>&1 \
 		|| gcloud iam service-accounts create $(SERVICE) --display-name "OBO Agent Bridge"
-	gcloud projects add-iam-policy-binding $(GC_PROJECT_ID) \
-		--member "serviceAccount:$(SA)" --role roles/aiplatform.user
+	@bind() { for i in 1 2 3 4 5 6; do gcloud projects add-iam-policy-binding $$(gcloud config get-value project 2>/dev/null) \
+		--member "serviceAccount:$(SA)" --role roles/aiplatform.user >/dev/null 2>&1 && return 0; sleep 5; done; \
+		echo "FAIL iam      aiplatform.user binding on $(SA) (fresh SAs take a few seconds to be visible to IAM)"; return 1; }; \
+	bind || exit 1
 
 deploy: require-env setup push
 	gcloud run deploy $(SERVICE) \
@@ -33,7 +35,7 @@ deploy: require-env setup push
 		--region $(GC_REGION) \
 		--service-account $(SA) \
 		--allow-unauthenticated --no-invoker-iam-check \
-		--set-env-vars "GC_PROJECT_ID=$(GC_PROJECT_ID),GC_REGION=$(GC_REGION),AGENT_ENGINE_ID=$(AGENT_ENGINE_ID),CORS_ORIGIN=$(CORS_ORIGIN),IDP_ISSUER=$(IDP_ISSUER)"
+		--set-env-vars "GC_REGION=$(GC_REGION),AGENT_ENGINE_ID=$(AGENT_ENGINE_ID),CORS_ORIGIN=$(CORS_ORIGIN),IDP_ISSUER=$(IDP_ISSUER)"
 
 destroy:
 	@$(MAKE) clean
@@ -43,7 +45,7 @@ destroy:
 			&& echo "PASS service  deleted" || { echo "FAIL service  delete"; exit 1; }; \
 	else echo "SKIP service  (not found)"; fi
 	@if gcloud iam service-accounts describe $(SA) --project $(PROJECT_ID) >/dev/null 2>&1; then \
-		gcloud projects remove-iam-policy-binding $(GC_PROJECT_ID) \
+		gcloud projects remove-iam-policy-binding $$(gcloud config get-value project 2>/dev/null) \
 			--member "serviceAccount:$(SA)" --role roles/aiplatform.user --quiet >/dev/null 2>&1; \
 		gcloud iam service-accounts delete $(SA) --project $(PROJECT_ID) --quiet >/dev/null \
 			&& echo "PASS sa        deleted" || { echo "FAIL sa        delete"; exit 1; }; \

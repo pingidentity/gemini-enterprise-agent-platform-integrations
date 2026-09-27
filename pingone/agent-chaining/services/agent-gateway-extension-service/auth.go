@@ -20,10 +20,7 @@ type delegatedTokenValidator struct {
 	keys     *jwk.Cache
 }
 
-func newDelegatedTokenValidator(ctx context.Context, idpTokenEndpoint, audience, scope string) (*delegatedTokenValidator, error) {
-	// Derive issuer and JWKS URL from the token endpoint.
-	// IDP_TOKEN_ENDPOINT form: https://auth.pingone.<region>/<env-id>/as/token
-	issuer := strings.TrimSuffix(idpTokenEndpoint, "/token")
+func newDelegatedTokenValidator(ctx context.Context, issuer, audience, scope string) (*delegatedTokenValidator, error) {
 	jwksURL := issuer + "/jwks"
 
 	cache := jwk.NewCache(ctx)

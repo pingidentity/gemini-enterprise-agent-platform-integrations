@@ -100,7 +100,7 @@ Most are already handled:
    ```text
    {"sub":"<extension-client-id>"}
    ```
-   The one expression here that can't be pasted verbatim: `<extension-client-id>` is the gateway extension's own PingOne client ID — the same value as `IDP_CLIENT_ID` in this service's `.env` (`fbd9fb33-...` in this deployment). It's a constant because hops 1 and 3 are the only exchanges onto this resource, and the only actor allowed next is this extension.
+   The one expression here that can't be pasted verbatim: `<extension-client-id>` is the gateway extension's own PingOne client ID — the same value as `EXCHANGE_CLIENT_ID` in the extension service's `.env` (`fbd9fb33-...` in this deployment). It's a constant because hops 1 and 3 are the only exchanges onto this resource, and the only actor allowed next is this extension.
 4. **`grant_type`** — Add attribute, Advanced Expressions, **leave `Required` unchecked**:
    ```text
    #root.context.requestData.grantType

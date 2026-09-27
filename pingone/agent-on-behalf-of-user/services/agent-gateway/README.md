@@ -12,8 +12,8 @@ cp .env.sample .env
 |---|---|
 | `GC_REGION` | Same region as the gateway and Cloud Run services |
 | `GC_GATEWAY_NAME` | `aobou-agent-gateway` |
-| `GC_EXT_SVC_NAME` | Deployed extension service Cloud Run name |
-| `GC_AUTHZ_EXTENSION` / `GC_AUTHZ_POLICY` | Names for the two resources this creates |
+| `GC_SERVICE_EXTENSION_NAME` | Name of the Service Extension resource the extension service registered (see its `.env`) |
+| `GC_AUTHZ_POLICY_NAME` | Name for the policy resource this creates |
 
 ## 2. Create the gateway
 
@@ -28,20 +28,27 @@ In the console: **Agent Platform → Govern → Gateways → Add gateway**.
 | **Access Authorization** | Enforce policies |
 | **Policy Model** | Allow Policy |
 
-## 3. Attach the extension service
+## 3. Attach the interception policy
 
-This wires the extension service to the gateway as a `CONTENT_AUTHZ` authorization extension scoped to `/mcp` - two resources: an **authorization extension** (points at your Cloud Run host) and an **authorization policy** (binds that extension to the gateway).
+Deploying the [extension service](../agent-gateway-extension-service/README.md)
+already **registered** its Service Extension resource (the ext_proc
+registration) — the extension's own `make register` does that. This step creates
+the second half: the **authorization policy** that binds that extension to the
+gateway and sends it every `/mcp` egress request. The gateway still gates
+*all* egress on its own (registry destination allowlist + IAP identity); this
+policy only decides which of those allowed requests also get the extension's
+token remint and PingOne Authorize.
 
-Configure and run:
+Prerequisites: the gateway exists (step 2) and the extension service has been
+deployed (`make deploy`) and registered (`make register`).
 
 ```bash
 make attach
 ```
 
-`make attach` renders `authz-extension.tmpl.yaml` and `authz-policy.tmpl.yaml`
-(filling in your project, region, and the ext-svc's live Cloud Run host), then
-imports both with `gcloud`. Run `make render` alone to inspect the generated YAML
-without importing. Config:
+`make attach` renders `authz-policy.tmpl.yaml` (project, region, gateway name)
+and imports it with `gcloud`, then verifies the imported policy back. It fails
+fast if the gateway is missing or the extension isn't registered yet.
 
 > **You'll now see two Service Extensions on the gateway - that's expected.**
 > They're complementary, not duplicates:
@@ -49,28 +56,25 @@ without importing. Config:
 > | Extension | Profile | Service | Role |
 > |---|---|---|---|
 > | `aobou-agent-gateway-iap-authzextension` | `REQUEST_AUTHZ` | `iap.googleapis.com` | Google-managed, **auto-created** with the gateway. Enforces the IAP identity/egress check (`iap.egressor`) - this is the "Auth provider: Google Cloud Identity-Aware Proxy" shown on the gateway. |
-> | `aobou-ext-proc-authzext` | `CONTENT_AUTHZ` | your Cloud Run ext-svc | The one you just created. Does the PingOne token exchange and `Authorization` injection. |
+> | `aobou-agent-gateway-extension` | `CONTENT_AUTHZ` | your Cloud Run ext-svc | The one you just created. Does the PingOne token exchange and `Authorization` injection. |
 >
 > The IAP extension answers *"is this agent allowed to egress at all?"*; yours
 > answers *"mint and inject the tool credential."* Both run on every `/mcp`
-> request - leave the IAP one alone.
+> request that passes the registry's destination allowlist - leave the IAP one
+> alone.
 
 ![Agent Gateway Config](../../../../_docs/agent-on-behalf-of-user/agent-gateway-config.png)
 
 ## 4. Register egress destinations
 
-In **Agent Platform → Govern → Agent Registry**:
+The gateway governs **all** agent egress: a host the agent reaches must be a
+registered destination in **Agent Platform → Govern → Agent Registry**, or the
+request is dropped before any policy runs. This is the gate that scopes the
+authz policy above — its `/mcp` path rule only selects which *allowed* requests
+trigger the extension callout. Two destinations are already handled:
 
-- **Stripe MCP Tool** - registered under **MCP Servers** when you deployed it.
-- **PingOne** - under **Endpoints → Add endpoint**, Destination URL = `https://auth.pingone.com` (or your regional variant).
-- Google APIs (`*.mtls.googleapis.com`) - auto-created with the gateway. Leave them alone.
-
-The gateway governs **all** agent egress, so every host the agent reaches must be
-a registered destination in **Agent Platform → Govern → Agent Registry**. Two of
-those are already handled:
-
-- **MCP tool** - registered under **MCP Servers** when you deployed it (it's an
-  MCP server, not an endpoint).
+- **Stripe MCP Tool** - registered under **MCP Servers** when you deployed it
+  (it's an MCP server, not an endpoint).
 - **Google APIs** (`aiplatform`, `iamcredentials`, `telemetry` on
   `*.mtls.googleapis.com`) - **auto-created** with the gateway for the runtime's
   own egress. Leave them alone.

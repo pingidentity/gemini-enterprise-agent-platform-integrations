@@ -36,11 +36,10 @@ cp .env.sample .env
 
 | Variable | Value |
 |---|---|
-| `GC_PROJECT_ID` | Target project ID |
-| `GC_REGION` | Deploy region, e.g. `us-central1` |
+| `GC_REGION` | Deploy region, e.g. `us-central1` (the project ID is derived from gcloud at deploy time) |
 | `AGENT_DISPLAY_NAME` | Display name for the Reasoning Engine, e.g. `aobou-financial-agent` |
 | `IDP_ISSUER` | PingOne issuer base, e.g. `https://auth.pingone.<region>/<env-id>/as` |
-| `GC_AGENT_GATEWAY` | Full gateway path: `projects/<id>/locations/<region>/agentGateways/<name>` |
+| `GC_AGENT_GATEWAY` | Bare gateway name, e.g. `aobou-agent-gateway` (the full resource path is built from the derived project ID) |
 | `AGENT_CLIENT_ID` | Agent's PingOne client ID (the Financial Agent app) |
 | `AGENT_CLIENT_SECRET` | Agent's PingOne client secret |
 | `TOOL_MCP_URL` | The Stripe MCP tool's `/mcp` endpoint |

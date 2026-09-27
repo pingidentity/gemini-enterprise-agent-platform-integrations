@@ -13,13 +13,10 @@ import (
 
 const pingOneMgmtScope = "p1:read:user"
 
-// pingoneUserResolver resolves a PingOne user's email address from their sub
-// claim using the PingOne management API. It uses the extension service's own
-// client_credentials token (same credentials as the IDP exchange) and caches
-// both the management token and resolved emails to minimise latency.
-//
-// The extension service's PingOne worker app must have the "Identity Data Read
-// Only" role assigned (scoped to the environment) for this to work.
+// pingoneUserResolver resolves a PingOne user's email from their sub via the
+// management API, using the Authorize worker's client_credentials token (that
+// app holds the Identity Data Read Only role). Caches the token and resolved
+// emails; a lookup miss is handled by the caller (best-effort feature).
 type pingoneUserResolver struct {
 	envID         string
 	apiBase       string
@@ -33,14 +30,11 @@ type pingoneUserResolver struct {
 	emailCache  map[string]string // sub → email
 }
 
-// emailForSub returns the email for the given PingOne sub, using cache when possible.
+// emailForSub returns the email for the given PingOne sub (the user's id).
 func (r *pingoneUserResolver) emailForSub(sub string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.emailCache == nil {
-		r.emailCache = make(map[string]string)
-	}
 	if email, ok := r.emailCache[sub]; ok {
 		return email, nil
 	}
@@ -59,7 +53,7 @@ func (r *pingoneUserResolver) emailForSub(sub string) (string, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, err := httpClient.Do(req)
+	resp, err := pingoneHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("user lookup request: %w", err)
 	}
@@ -75,13 +69,15 @@ func (r *pingoneUserResolver) emailForSub(sub string) (string, error) {
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", fmt.Errorf("decode user lookup response: %w", err)
 	}
-	email := result.Email
-	if email == "" {
+	if result.Email == "" {
 		return "", fmt.Errorf("user %q has no email", sub)
 	}
 
-	r.emailCache[sub] = email
-	return email, nil
+	if r.emailCache == nil {
+		r.emailCache = make(map[string]string)
+	}
+	r.emailCache[sub] = result.Email
+	return result.Email, nil
 }
 
 // refreshMgmtToken returns a valid management token, fetching a new one when expired.
@@ -90,7 +86,7 @@ func (r *pingoneUserResolver) refreshMgmtToken() (string, error) {
 	if r.mgmtToken != "" && time.Now().Before(r.mgmtExpires) {
 		return r.mgmtToken, nil
 	}
-	tok, expiresIn, err := fetchToken(r.tokenEndpoint, r.clientID, r.clientSecret,
+	tok, expiresIn, err := fetchOAuthToken(r.tokenEndpoint, r.clientID, r.clientSecret,
 		url.Values{
 			"grant_type": {"client_credentials"},
 			"scope":      {pingOneMgmtScope},
@@ -99,22 +95,21 @@ func (r *pingoneUserResolver) refreshMgmtToken() (string, error) {
 		return "", err
 	}
 	r.mgmtToken = tok
-	r.mgmtExpires = time.Now().Add(tokenTTL(expiresIn))
+	r.mgmtExpires = time.Now().Add(getTokenCacheLifetime(expiresIn))
 	return tok, nil
 }
 
 // parsePingOneCoords derives the PingOne env ID and management API base URL
-// from a token endpoint URL of the form:
+// from the issuer, which encodes both:
 //
-//	https://auth.pingone.<region>/<env-id>/as/token
-func parsePingOneCoords(tokenEndpoint string) (envID, apiBase string, err error) {
-	withoutScheme := strings.TrimPrefix(tokenEndpoint, "https://")
-	parts := strings.SplitN(withoutScheme, "/", 4)
+//	https://auth.pingone.<region>/<env-id>/as → https://api.pingone.<region>/v1
+func parsePingOneCoords(issuer string) (envID, apiBase string, err error) {
+	withoutScheme := strings.TrimPrefix(issuer, "https://")
+	parts := strings.SplitN(withoutScheme, "/", 3)
 	if len(parts) < 2 || parts[1] == "" {
-		return "", "", fmt.Errorf("cannot parse env ID from %q", tokenEndpoint)
+		return "", "", fmt.Errorf("cannot parse env ID from %q", issuer)
 	}
 	envID = parts[1]
-	apiHost := strings.Replace(parts[0], "auth.", "api.", 1)
-	apiBase = "https://" + apiHost + "/v1"
+	apiBase = "https://" + strings.Replace(parts[0], "auth.", "api.", 1) + "/v1"
 	return envID, apiBase, nil
 }

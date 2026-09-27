@@ -1,4 +1,4 @@
-module github.com/agent-gateway-demos/order-status-mcp-server
+module ac-order-status-mcp-server
 
 go 1.25.4
 

@@ -29,6 +29,8 @@ deploy: require-env push
 		--image $(IMAGE) \
 		--region $(GC_REGION) \
 		--allow-unauthenticated --no-invoker-iam-check \
+		--ingress=all \
+		--port 8080 \
 		--set-env-vars "IDP_ISSUER=$(IDP_ISSUER),IDP_REQUIRED_SCOPE=$(IDP_REQUIRED_SCOPE),IDP_REQUIRED_AUDIENCE=$(IDP_REQUIRED_AUDIENCE)" \
 		--set-secrets "STRIPE_SECRET_KEY=stripe-secret-key:latest"
 	@$(MAKE) smoke
@@ -36,11 +38,11 @@ deploy: require-env push
 URL := $(shell gcloud run services describe $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) --format 'value(status.url)' 2>/dev/null)
 
 logs:
-	gcloud run services logs tail $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION)
+	gcloud beta run services logs read $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) --limit 50
 
 # Deletes service + image. Keeps the stripe-secret-key secret (it may predate
 # this journey).
-destroy:
+destroy: require-env
 	@echo "destroy $(GC_CLOUD_RUN_SERVICE_NAME)"
 	@if gcloud run services describe $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) >/dev/null 2>&1; then \
 		gcloud run services delete $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) --quiet >/dev/null \

@@ -14,6 +14,10 @@ type ctxKeyCallerSub struct{}
 
 func newRouter(mcpServer *server.StreamableHTTPServer, validator *tokenValidator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if r.URL.Path != "/mcp" {
 			http.NotFound(w, r)
 			return

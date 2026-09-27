@@ -37,10 +37,9 @@ destroy:
 	@gcloud auth list --filter="status:ACTIVE" --format="value(account)" 2>/dev/null | grep -q . || { echo "FAIL auth     no active gcloud account — run gcloud auth login"; exit 1; }
 	@echo "destroy agent"
 	@command -v gcloud >/dev/null || { echo "FAIL gcloud   not on PATH — install the Google Cloud CLI (cloud.google.com/sdk/docs/install)"; exit 1; }
-	@test -n "$(GC_PROJECT_ID)"      || { echo "GC_PROJECT_ID not set — fill in .env (copy from .env.sample)"; exit 1; }
 	@test -n "$(GC_REGION)"          || { echo "GC_REGION not set — fill in .env (copy from .env.sample)"; exit 1; }
 	@test -n "$(AGENT_DISPLAY_NAME)" || { echo "AGENT_DISPLAY_NAME not set — fill in .env (copy from .env.sample)"; exit 1; }
-	@base="https://aiplatform.googleapis.com/v1/projects/$(GC_PROJECT_ID)/locations/$(GC_REGION)/reasoningEngines"; \
+	@base="https://aiplatform.googleapis.com/v1/projects/$$(gcloud config get-value project 2>/dev/null)/locations/$(GC_REGION)/reasoningEngines"; \
 	tok=$$(gcloud auth print-access-token); \
 	out=$$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $$tok" "$$base"); \
 	code=$$(printf '%s' "$$out" | tail -1); \
@@ -50,15 +49,15 @@ destroy:
 	if [ -z "$$engines" ]; then \
 		echo "SKIP engine   none named $(AGENT_DISPLAY_NAME)"; \
 	else \
-		org=$$(gcloud projects get-ancestors $(GC_PROJECT_ID) --format='value(id,type)' | awk '$$2=="organization" {print $$1}'); \
-		[ -n "$$org" ] || { echo "FAIL org      no organization found for project $(GC_PROJECT_ID)"; exit 1; }; \
-		pnum=$$(gcloud projects describe $(GC_PROJECT_ID) --format='value(projectNumber)'); \
+		org=$$(gcloud projects get-ancestors $$(gcloud config get-value project 2>/dev/null) --format='value(id,type)' | awk '$$2=="organization" {print $$1}'); \
+		[ -n "$$org" ] || { echo "FAIL org      no organization found for the active gcloud project"; exit 1; }; \
+		pnum=$$(gcloud projects describe $$(gcloud config get-value project 2>/dev/null) --format='value(projectNumber)'); \
 		for e in $$engines; do \
 			id=$${e##*/}; \
 			echo "  · deleting engine $$id …"; \
 			principal="principal://agents.global.org-$$org.system.id.goog/resources/aiplatform/projects/$$pnum/locations/$(GC_REGION)/reasoningEngines/$$id"; \
 			gcloud alpha iap web remove-iam-policy-binding --resource-type=agent-registry --region=$(GC_REGION) \
-				--member="$$principal" --role=roles/iap.egressor --project=$(GC_PROJECT_ID) >/dev/null 2>&1 \
+				--member="$$principal" --role=roles/iap.egressor --project=$$(gcloud config get-value project 2>/dev/null) >/dev/null 2>&1 \
 				&& echo "  · egress grant revoked" || echo "  · egress grant not present (skipping)"; \
 			dcode=$$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $$tok" \
 				"$$base/$$id?force=true"); \
@@ -77,7 +76,7 @@ destroy:
 			echo "FAIL engine   did not delete in time — check the console (Agent Platform → Agent Runtime)"; exit 1; \
 		fi; \
 		echo "PASS destroy  $(AGENT_DISPLAY_NAME)"; \
-		echo "  kept: gs://$(GC_PROJECT_ID)-agent-staging (shared, auto-recreated on deploy)"; \
+		echo "  kept: gs://$$(gcloud config get-value project 2>/dev/null)-agent-staging (shared, auto-recreated on deploy)"; \
 	fi
 	@$(MAKE) clean
 

@@ -1,0 +1,11 @@
+# Registers this service as a Service Extension resource the gateway can call
+# out to over Envoy ext_proc.
+name: projects/${PROJECT_ID}/locations/${GC_REGION}/authzExtensions/${GC_SERVICE_EXTENSION_NAME}
+service: ${EXTENSION_SERVICE_HOST}
+authority: ${EXTENSION_SERVICE_HOST}
+# If the extension is unreachable, deny the request rather than let it through.
+failOpen: false
+timeout: 5s
+# The extension speaks the ext_proc gRPC protocol (Cloud Run, port 50051, HTTP/2).
+wireFormat: EXT_PROC_GRPC
+loadBalancingScheme: LOAD_BALANCING_SCHEME_UNSPECIFIED

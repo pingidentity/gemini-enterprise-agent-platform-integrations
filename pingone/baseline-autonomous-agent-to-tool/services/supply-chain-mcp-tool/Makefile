@@ -3,9 +3,8 @@ export
 
 PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 IMAGE      := gcr.io/$(PROJECT_ID)/$(GC_CLOUD_RUN_SERVICE_NAME):latest
-SA         := $(GC_CLOUD_RUN_SERVICE_NAME)@$(PROJECT_ID).iam.gserviceaccount.com
 
-.PHONY: build push setup deploy destroy logs smoke require-env
+.PHONY: build push deploy destroy logs smoke require-env
 
 require-env:
 	@gcloud auth list --filter="status:ACTIVE" --format="value(account)" 2>/dev/null | grep -q . || { echo "FAIL auth     no active gcloud account — run gcloud auth login"; exit 1; }
@@ -24,16 +23,10 @@ push:
 	docker build --platform linux/amd64 -t $(IMAGE) .
 	docker push $(IMAGE)
 
-setup: require-env
-	gcloud services enable run.googleapis.com iam.googleapis.com
-	@gcloud iam service-accounts describe $(SA) >/dev/null 2>&1 \
-		|| gcloud iam service-accounts create $(GC_CLOUD_RUN_SERVICE_NAME) --display-name "$(GC_CLOUD_RUN_SERVICE_NAME)"
-
-deploy: require-env setup push
+deploy: require-env push
 	gcloud run deploy $(GC_CLOUD_RUN_SERVICE_NAME) \
 		--image $(IMAGE) \
 		--region $(GC_REGION) \
-		--service-account $(SA) \
 		--allow-unauthenticated --no-invoker-iam-check \
 		--ingress=all \
 		--port 8080 \
@@ -43,7 +36,7 @@ deploy: require-env setup push
 URL := $(shell gcloud run services describe $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) --format 'value(status.url)' 2>/dev/null)
 
 logs:
-	gcloud run services logs tail $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION)
+	gcloud beta run services logs read $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) --limit 50
 
 destroy: require-env
 	@echo "destroy $(GC_CLOUD_RUN_SERVICE_NAME)"

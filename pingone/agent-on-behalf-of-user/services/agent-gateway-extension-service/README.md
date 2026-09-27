@@ -2,11 +2,35 @@
 
 An Envoy `ext_proc` gRPC handler that the Agent Gateway calls on every request on the governed path. Deployed on Cloud Run, registered as a Service Extension.
 
-For requests bound to the Stripe MCP tool it:
-1. Validates the agent's delegated token: `iss`, `aud`, and `scope`
-2. Resolves the user's email from `sub` via the PingOne management API
-3. On `tools/call` requests, calls PingOne Authorize with compound attributes; non-`tools/call` requests (initialize, tools/list) skip Authorize
-4. On PERMIT, performs an RFC 8693 exchange to produce a tool-audienced token, then injects it as `Authorization: Bearer` and the resolved email as `X-User-Email` before forwarding the request to the Stripe MCP server
+For a request aimed at the Stripe MCP server (MCP traffic aimed at any other host is denied; other traffic — the engine's own Agent Runtime session calls — passes through untouched):
+
+```
+header phase   1. VALIDATE   the user's delegated bearer: signature via JWKS,
+                              then iss, aud, scope          → 401 on failure
+               2. EXCHANGE   RFC 8693: delegated token as subject, this service's
+                              client_credentials token as actor → tool-audienced
+                              token (cached per subject)      → 403 on failure
+               3. RESOLVE    the user's email from sub via the PingOne
+                              management API
+               4. INJECT     the tool token as Authorization: Bearer and the
+                              email as X-User-Email, request the body (BUFFERED)
+body phase     5. AUTHORIZE  on tools/call only: PingOne Authorize decides
+                              PERMIT/DENY on compound attributes — user + agent
+                              + tool + amount (initialize and tools/list skip it)
+                                                             → 403 on deny/error
+```
+
+### Where to change what
+
+| To change... | Edit | Where |
+|---|---|---|
+| Which outbound traffic is governed | `isGovernedToolHost` | `request_policy.go` |
+| What the inbound token must carry | `IDP_REQUIRED_AUDIENCE` / `IDP_REQUIRED_SCOPE` env vars | `.env` |
+| What the policy decides on | the `decisionRequestParams` map in `askPingOneAuthorizeToPermitToolsCall` + the Trust Framework attributes | `request_policy.go` + PingOne console |
+| Which body types trigger Authorize | the `readMCPMethod(...) == "tools/call"` check | `request_policy.go` (`handleRequestBodyPhase`) |
+| What the outbound token is minted for | `TOOL_SCOPE` / `TOOL_URL` env vars | `.env` |
+
+Code layout, in reading order: `main.go` (flow overview + config/wiring) → `request_policy.go` (per-request decisions — the file you edit) → `gateway_responses.go` (how we answer the gateway — stream loop + response builders) → `p1_token_exchange.go` (RFC 8693 exchange) → `auth.go` (JWKS validation) → `p1_user_resolver.go` (user email lookup) → `p1_authz_client.go` (Authorize transport) → `util.go` (generic helpers). Only the first two ever change when repurposing the service; the rest are protocol plumbing configured by env vars.
 
 ## Configure
 
@@ -72,8 +96,9 @@ cp .env.sample .env
 | Variable | Value |
 |---|---|
 | `GC_REGION` | Deploy region, e.g. `us-central1` |
+| `GC_SERVICE_EXTENSION_NAME` | Name of the Service Extension resource created when this service is registered (make register), e.g. `aobou-agent-gateway-extension` |
 | `GC_CLOUD_RUN_SERVICE_NAME` | `aobou-agent-gateway-extension-service` |
-| `IDP_TOKEN_ENDPOINT` | `https://auth.pingone.<region>/<env-id>/as/token` |
+| `IDP_ISSUER` | `https://auth.pingone.<region>/<env-id>/as` (the token endpoint is derived as `IDP_ISSUER` + `/token`) |
 | `EXCHANGE_CLIENT_ID` | Token-exchange app Client ID (the exchange actor) |
 | `EXCHANGE_CLIENT_SECRET` | Token-exchange app Client Secret |
 | `AUTHZ_CLIENT_ID` | Authorize worker app Client ID |
@@ -88,6 +113,11 @@ cp .env.sample .env
 
 ```bash
 make deploy
+make register
 ```
 
-`deploy` runs `setup`, then `push`, then `gcloud run deploy`.
+`deploy` runs `setup`, then `push`, then `gcloud run deploy` — the Cloud Run service only.
+`register` imports this service as an available Service Extension (rendering
+`service-extension.tmpl.yaml` with the live Cloud Run URL). It's re-runnable any
+time, e.g. after the URL changed; the gateway only routes to it after the policy
+in ../agent-gateway binds it — see the [agent-gateway README](../agent-gateway/README.md).

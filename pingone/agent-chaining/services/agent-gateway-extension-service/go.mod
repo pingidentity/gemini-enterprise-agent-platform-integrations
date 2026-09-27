@@ -1,17 +1,16 @@
-module github.com/agent-gateway-demos/ac-agent-gateway-extension-service
+module ac-agent-gateway-extension-service
 
 go 1.25.0
 
 require (
+	cloud.google.com/go/compute/metadata v0.9.0
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
-	github.com/joho/godotenv v1.5.1
 	github.com/lestrrat-go/jwx/v2 v2.1.7
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/grpc v1.83.2
 )
 
 require (
-	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect

@@ -169,8 +169,8 @@ The delegation can be observed by following the logs of the two Cloud Run servic
 ```
 # Extension service: every MCP request (initialize, tools/list, tools/call)
 # is validated, exchanged, and forwarded with a fresh tool token.
-[ExtSvc] request authority="aobou-stripe-mcp-server-...run.app" path="/mcp"
-[ExtSvc] aobou-stripe-mcp-server-... /mcp - user=<user-sub> agent=<agent-client-id> email=alice@example.com
+[ExtSvc] request authority="aobou-stripe-mcp-server-...run.app" path="/mcp" governed=true
+[ExtSvc] governing /mcp — user=<user-sub> agent=<agent-client-id> email=alice@example.com
 [ExtSvc] tool token minted (ttl 59m30s)
 [ExtSvc] injecting tool token for aobou-stripe-mcp-server-...run.app
 

@@ -4,7 +4,12 @@ from dotenv import load_dotenv
 
 
 load_dotenv()
-GC_PROJECT_ID = os.environ["GC_PROJECT_ID"]
+# The project ID is derived, not configured: the bridge always runs inside its
+# own project, and google.auth resolves it from the Cloud Run metadata server.
+# GC_PROJECT_ID remains as an override for local debugging.
+import google.auth
+
+GC_PROJECT_ID = os.environ.get("GC_PROJECT_ID") or google.auth.default()[1]
 GC_REGION = os.environ["GC_REGION"]
 CORS_ORIGIN = os.environ["CORS_ORIGIN"]
 IDP_ISSUER = os.environ["IDP_ISSUER"].rstrip("/")

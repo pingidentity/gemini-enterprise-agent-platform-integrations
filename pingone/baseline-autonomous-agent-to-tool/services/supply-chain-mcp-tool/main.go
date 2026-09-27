@@ -30,16 +30,11 @@ func main() {
 		Description: "Place a restock order for a product in a given region.",
 	}, handleRestock)
 
-	mux := http.NewServeMux()
-	mux.Handle("/mcp", validator.middleware(mcp.NewStreamableHTTPHandler(
+	mcpServer := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return server }, nil,
-	)))
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
+	)
 	log.Printf("[SupplyChain] listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := http.ListenAndServe(":"+port, newRouter(mcpServer, validator)); err != nil {
 		log.Fatalf("server: %v", err)
 	}
 }

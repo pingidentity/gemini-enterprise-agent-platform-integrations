@@ -30,8 +30,7 @@ cp .env.sample .env
 
 | Variable | Value |
 |---|---|
-| `GC_PROJECT_ID` | Target project ID |
-| `GC_REGION` | Deploy region, e.g. `us-central1` |
+| `GC_REGION` | Deploy region, e.g. `us-central1` (the project ID is derived from the Cloud Run metadata server at runtime) |
 | `GC_CLOUD_RUN_SERVICE_NAME` | Cloud Run service name, e.g. `aobou-agent-bridge` |
 | `IDP_ISSUER` | PingOne issuer base, e.g. `https://auth.pingone.<region>/<env-id>/as` |
 | `CORS_ORIGIN` | Chat UI Cloud Run URL |

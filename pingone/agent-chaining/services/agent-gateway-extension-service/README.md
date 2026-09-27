@@ -75,18 +75,20 @@ cp .env.sample .env
 
 | Variable | Value |
 |---|---|
-| `GC_REGION` | Deploy region, e.g. `us-central1` |
+| `GC_REGION` | Deploy region, e.g. `us-central1` (the project ID is derived from the Cloud Run metadata server at runtime) |
 | `GC_CLOUD_RUN_SERVICE_NAME` | `ac-agent-gateway-extension-service` |
-| `IDP_TOKEN_ENDPOINT` | `https://auth.pingone.<region>/<env-id>/as/token` |
-| `IDP_CLIENT_ID` | Token-exchange app Client ID |
-| `IDP_CLIENT_SECRET` | Token-exchange app Client Secret |
-| `AGENT_GATEWAY_AUDIENCE` | Shared intermediate audience the inbound delegated token must carry, e.g. `ac-google-cloud-agent-gateway` |
-| `A2A_TARGET_URL` | Order Status Agent's A2A endpoint (`.../reasoningEngines/<engine-id>/a2a`) |
-| `A2A_REQUIRED_AUDIENCE` | Final audience for the A2A hop, e.g. `order-status-agent` |
-| `A2A_REQUIRED_SCOPE` | Final scope for the A2A hop, e.g. `order-status:invoke` |
-| `MCP_TARGET_URL` | The Order Status MCP server's Cloud Run URL (with `/mcp` path) |
-| `MCP_REQUIRED_AUDIENCE` | Final audience for the MCP hop, e.g. `order-status-mcp-server` |
-| `MCP_REQUIRED_SCOPE` | Final scope for the MCP hop, e.g. `order:read` |
+| `IDP_ISSUER` | `https://auth.pingone.<region>/<env-id>/as` (the token endpoint is derived as `IDP_ISSUER` + `/token`) |
+| `EXCHANGE_CLIENT_ID` | Token-exchange app Client ID (the exchange actor) |
+| `EXCHANGE_CLIENT_SECRET` | Token-exchange app Client Secret |
+| `IDP_REQUIRED_AUDIENCE` | Shared intermediate audience the inbound delegated token must carry, e.g. `ac-google-cloud-agent-gateway` |
+| `IDP_REQUIRED_SCOPE_AGENT` | Scope the inbound A2A-hop token must carry, e.g. `order-status:invoke` |
+| `IDP_REQUIRED_SCOPE_TOOL` | Scope the inbound MCP-hop token must carry, e.g. `order:read` |
+| `AGENT_ENGINE_ID` | The Order Status Agent's bare Reasoning Engine ID — the mTLS A2A URL is derived from the project ID (metadata server)/`GC_REGION`/this (the gateway only intercepts the mTLS host; the authz policy only matches project-ID-string paths) |
+| `AGENT_AUDIENCE` | Final audience for the A2A hop, e.g. `order-status-agent` |
+| `AGENT_SCOPE` | Scope minted for the A2A hop's outbound token, e.g. `order-status:invoke` |
+| `TOOL_URL` | The Order Status MCP server's Cloud Run URL (host only; the agent calls the full `/mcp` URL) |
+| `TOOL_AUDIENCE` | Final audience for the MCP hop, e.g. `order-status-mcp-server` |
+| `TOOL_SCOPE` | Scope minted for the MCP hop's outbound token, e.g. `order:read` |
 | `AUTHZ_DECISION_ENDPOINT` | PingOne Authorize decision endpoint URL |
 | `AUTHZ_CLIENT_ID` | Authorize worker app Client ID |
 | `AUTHZ_CLIENT_SECRET` | Authorize worker app Client Secret |

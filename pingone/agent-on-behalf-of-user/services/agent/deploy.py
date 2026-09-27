@@ -7,6 +7,7 @@ for expected failure modes.
 """
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -23,6 +24,26 @@ import agentplatform
 from agentplatform import agent_engines, types
 from google.cloud import storage
 
+# Derive the project ID before config import: gcloud is the source of truth
+# on the deploy host, and `projects describe` normalizes a configured project
+# number into the canonical string form (the form every resource reference
+# here requires). Set GC_PROJECT_ID to override.
+if not os.environ.get("GC_PROJECT_ID"):
+    raw = subprocess.run(
+        ["gcloud", "config", "get-value", "project"], capture_output=True, text=True
+    ).stdout.strip()
+    if not raw:
+        raise SystemExit(
+            "GC_PROJECT_ID not set and gcloud has no active project — "
+            "run `gcloud config set project <id>` or set GC_PROJECT_ID in .env"
+        )
+    if raw.isdigit():
+        raw = subprocess.run(
+            ["gcloud", "projects", "describe", raw, "--format=value(projectId)"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+    os.environ["GC_PROJECT_ID"] = raw
+
 from agent import root_agent
 from config import (
     AGENT_CLIENT_ID,
@@ -35,6 +56,12 @@ from config import (
     TOKEN_ENDPOINT,
     TOOL_MCP_URL,
     TOOL_SCOPE,
+)
+
+# The gateway is configured by bare name; the full resource path is built here
+# so the project-ID-string form is guaranteed by construction.
+GATEWAY_RESOURCE = (
+    f"projects/{GC_PROJECT_ID}/locations/{GC_REGION}/agentGateways/{GC_AGENT_GATEWAY}"
 )
 
 LINE = "─" * 64
@@ -68,20 +95,19 @@ def preflight() -> None:
 
     # The gateway must exist before an engine can bind to it — fail here in
     # seconds rather than 30s into the engine create.
-    gw_name = GC_AGENT_GATEWAY.rsplit("/", 1)[-1]
-    gw_project = GC_AGENT_GATEWAY.split("/")[1]
+    gw_name = GC_AGENT_GATEWAY
     describe = subprocess.run(
         ["gcloud", "beta", "network-services", "agent-gateways", "describe",
-         gw_name, "--project", gw_project, "--location", GC_REGION,
+         gw_name, "--project", GC_PROJECT_ID, "--location", GC_REGION,
          "--format=value(name)"],
         capture_output=True, text=True,
     )
     if describe.returncode != 0 or not describe.stdout.strip():
-        die(f"gateway not found: {gw_name} (project {gw_project}, location {GC_REGION})",
+        die(f"gateway not found: {gw_name} (project {GC_PROJECT_ID}, location {GC_REGION})",
             "Gateways are created in the console (pick the 'Allow Policy (legacy)'\n"
-            "  policy model), then set GC_AGENT_GATEWAY in .env to its full resource\n"
-            "  name: projects/<project>/locations/us-central1/agentGateways/<name>")
-    ok(f"gateway={gw_name} (exists in {gw_project})")
+            "  policy model), then set GC_AGENT_GATEWAY in .env to its bare name\n"
+            "  (e.g. aobou-agent-gateway).")
+    ok(f"gateway={gw_name} (exists in {GC_PROJECT_ID})")
 
     # Mint the agent's identity token for real — every hop of the demo
     # depends on this, and it catches bad credentials in seconds instead of
@@ -195,7 +221,7 @@ def create_engine() -> str:
         "staging_bucket": staging_bucket(),
         "display_name": AGENT_DISPLAY_NAME,
         "identity_type": types.IdentityType.AGENT_IDENTITY,
-        "agent_gateway_config": {"agent_to_anywhere_config": {"agent_gateway": GC_AGENT_GATEWAY}},
+        "agent_gateway_config": {"agent_to_anywhere_config": {"agent_gateway": GATEWAY_RESOURCE}},
         "env_vars": env_vars,
     }
 
@@ -216,8 +242,8 @@ def create_engine() -> str:
                     "The engine deploy validates the gateway reference and this\n"
                     "  gateway does not exist at that project/location. Gateways are\n"
                     "  created in the console (pick the 'Allow Policy (legacy)' policy\n"
-                    "  model), then set GC_AGENT_GATEWAY in .env to its full resource\n"
-                    "  name: projects/<project>/locations/us-central1/agentGateways/<name>")
+                    "  model), then set GC_AGENT_GATEWAY in .env to its bare name\n"
+                    "  (e.g. aobou-agent-gateway).")
             else:
                 die(f"engine create failed: {msg}")
     if remote_agent is None:
@@ -273,9 +299,9 @@ def postdeploy(resource_name: str) -> None:
         die("engine spec shows no gateway binding",
             "The engine was created without agentGatewayConfig — check the\n"
             "  agent_gateway_config block in deploy.py.")
-    if gateway != GC_AGENT_GATEWAY:
-        die(f"engine bound to {gateway}, expected {GC_AGENT_GATEWAY}")
-    ok(f"gateway binding: {GC_AGENT_GATEWAY.rsplit('/', 1)[-1]}")
+    if gateway != GATEWAY_RESOURCE:
+        die(f"engine bound to {gateway}, expected {GATEWAY_RESOURCE}")
+    ok(f"gateway binding: {GC_AGENT_GATEWAY}")
 
     # 3. The engine's agent principal holds roles/iap.egressor.
     project_number = _gcloud("projects", "describe", GC_PROJECT_ID,
@@ -307,7 +333,7 @@ def postdeploy(resource_name: str) -> None:
   ✔ DEPLOY COMPLETE — {AGENT_DISPLAY_NAME}  ({elapsed:.0f}s)
 {LINE}
     engine:   {resource_name}
-    gateway:  {GC_AGENT_GATEWAY.rsplit('/', 1)[-1]}  (egress live after ~3 min propagation)
+    gateway:  {GC_AGENT_GATEWAY}  (egress live after ~3 min propagation)
 {LINE}""")
 
 

@@ -111,7 +111,7 @@ done
 Follow the instructions in [supply-chain-mcp-tool](services/supply-chain-mcp-tool/README.md) to deploy this service to Cloud Run and register it in Agent Registry.
 
 ### 2. Agent Gateway Extension Service
-Follow the instructions in [agent-gateway-extension-service](services/agent-gateway-extension-service/README.md) to deploy this service to Cloud Run.
+Follow the instructions in [agent-gateway-extension-service](services/agent-gateway-extension-service/README.md) to deploy this service to Cloud Run and register is as a service extension.
 
 ### 3. Agent Gateway
 Follow the instructions in [agent-gateway](services/agent-gateway/README.md) to create the gateway, attach the extension service, and register the egress destinations.
@@ -139,9 +139,9 @@ To watch the delegation happen, follow the logs of the two Cloud Run services (`
 ```
 # Extension service: every MCP request (initialize, tools/list, tools/call)
 # is validated, exchanged, and forwarded with a fresh tool token.
-[ExtSvc] request authority="baatt-supply-chain-mcp-tool-...run.app" path="/mcp"
+[ExtSvc] request authority="baatt-supply-chain-mcp-tool-...run.app" path="/mcp" governed=true
 [ExtSvc] delegated tool token minted
-[ExtSvc] injecting delegated token for baatt-supply-chain-mcp-tool-...run.app
+[ExtSvc] injecting tool token for baatt-supply-chain-mcp-tool-...run.app
 
 # Extension service: PingOne Authorize is consulted on tools/call only.
 [ExtSvc] authorize agent=<agent-client-id> hour=15

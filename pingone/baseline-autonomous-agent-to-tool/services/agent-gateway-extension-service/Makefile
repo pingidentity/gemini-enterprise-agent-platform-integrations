@@ -7,17 +7,20 @@ IMAGE         := gcr.io/$(PROJECT_ID)/$(GC_CLOUD_RUN_SERVICE_NAME):latest
 SA            := baatt-ext-svc@$(PROJECT_ID).iam.gserviceaccount.com
 SECRET        := baatt-idp-client-secret
 AUTHZ_SECRET  := baatt-authz-client-secret
+EXT_YAML      := service-extension.yaml
 
 URL := $(shell gcloud run services describe $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) --format 'value(status.url)' 2>/dev/null)
 
-.PHONY: build push setup deploy destroy verify preflight logs require-env
+.PHONY: build push setup deploy destroy verify preflight register logs require-env
 
 require-env:
 	@gcloud auth list --filter="status:ACTIVE" --format="value(account)" 2>/dev/null | grep -q . || { echo "FAIL auth     no active gcloud account — run gcloud auth login"; exit 1; }
-	@command -v gcloud >/dev/null || { echo "FAIL gcloud   not on PATH — install the Google Cloud CLI (cloud.google.com/sdk/docs/install)"; exit 1; }
+	@command -v gcloud >/dev/null || { echo "FAIL gcloud   not on PATH — install the Google Cloud CLI (cloud.google.com/sdk/docs/install)"; exit 1; }; \
+	command -v docker >/dev/null || { echo "FAIL docker   not on PATH — install it (docs.docker.com/get-docker)"; exit 1; }
 	@test -n "$(GC_CLOUD_RUN_SERVICE_NAME)" || { echo "GC_CLOUD_RUN_SERVICE_NAME not set — fill in .env (copy from .env.sample)"; exit 1; }
+	@test -n "$(GC_SERVICE_EXTENSION_NAME)" || { echo "GC_SERVICE_EXTENSION_NAME not set — fill in .env (copy from .env.sample)"; exit 1; }
 	@test -n "$(GC_REGION)"                 || { echo "GC_REGION not set — fill in .env (copy from .env.sample)"; exit 1; }
-	@test -n "$(IDP_TOKEN_ENDPOINT)"        || { echo "IDP_TOKEN_ENDPOINT not set — fill in .env (copy from .env.sample)"; exit 1; }
+	@test -n "$(IDP_ISSUER)"                || { echo "IDP_ISSUER not set — fill in .env (copy from .env.sample)"; exit 1; }
 	@test -n "$(EXCHANGE_CLIENT_ID)"        || { echo "EXCHANGE_CLIENT_ID not set — fill in .env (copy from .env.sample)"; exit 1; }
 	@test -n "$(EXCHANGE_CLIENT_SECRET)"    || { echo "EXCHANGE_CLIENT_SECRET not set — fill in .env (copy from .env.sample)"; exit 1; }
 	@test -n "$(TOOL_SCOPE)"                || { echo "TOOL_SCOPE not set — fill in .env (copy from .env.sample)"; exit 1; }
@@ -42,15 +45,12 @@ setup: require-env
 	@gcloud secrets describe $(SECRET) >/dev/null 2>&1 \
 		|| gcloud secrets create $(SECRET) --replication-policy automatic
 	@printf '%s' "$(EXCHANGE_CLIENT_SECRET)" | gcloud secrets versions add $(SECRET) --data-file=-
-	gcloud secrets add-iam-policy-binding $(SECRET) \
-		--member "serviceAccount:$(SA)" \
-		--role roles/secretmanager.secretAccessor
 	@gcloud secrets describe $(AUTHZ_SECRET) >/dev/null 2>&1 \
 		|| gcloud secrets create $(AUTHZ_SECRET) --replication-policy automatic
 	@printf '%s' "$(AUTHZ_CLIENT_SECRET)" | gcloud secrets versions add $(AUTHZ_SECRET) --data-file=-
-	gcloud secrets add-iam-policy-binding $(AUTHZ_SECRET) \
-		--member "serviceAccount:$(SA)" \
-		--role roles/secretmanager.secretAccessor
+	@bind() { for i in 1 2 3 4 5 6; do gcloud secrets add-iam-policy-binding $$1 --member "serviceAccount:$(SA)" --role roles/secretmanager.secretAccessor >/dev/null 2>&1 && return 0; sleep 5; done; echo "FAIL iam      secretAccessor binding on $$1 (fresh SAs take a few seconds to be visible to IAM)"; return 1; }; \
+	bind $(SECRET) || exit 1; \
+	bind $(AUTHZ_SECRET) || exit 1
 
 deploy: require-env setup
 	@$(MAKE) preflight
@@ -63,12 +63,30 @@ deploy: require-env setup
 		--ingress=all \
 		--port 50051 \
 		--use-http2 \
-		--set-env-vars "GRPC_PORT=50051,IDP_TOKEN_ENDPOINT=$(IDP_TOKEN_ENDPOINT),EXCHANGE_CLIENT_ID=$(EXCHANGE_CLIENT_ID),TOOL_SCOPE=$(TOOL_SCOPE),IDP_REQUIRED_AUDIENCE=$(IDP_REQUIRED_AUDIENCE),IDP_REQUIRED_SCOPE=$(IDP_REQUIRED_SCOPE),TOOL_URL=$(TOOL_URL),AUTHZ_DECISION_ENDPOINT=$(AUTHZ_DECISION_ENDPOINT),AUTHZ_CLIENT_ID=$(AUTHZ_CLIENT_ID)" \
+		--set-env-vars "GRPC_PORT=50051,IDP_ISSUER=$(IDP_ISSUER),EXCHANGE_CLIENT_ID=$(EXCHANGE_CLIENT_ID),TOOL_SCOPE=$(TOOL_SCOPE),IDP_REQUIRED_AUDIENCE=$(IDP_REQUIRED_AUDIENCE),IDP_REQUIRED_SCOPE=$(IDP_REQUIRED_SCOPE),TOOL_URL=$(TOOL_URL),AUTHZ_DECISION_ENDPOINT=$(AUTHZ_DECISION_ENDPOINT),AUTHZ_CLIENT_ID=$(AUTHZ_CLIENT_ID)" \
 		--set-secrets "EXCHANGE_CLIENT_SECRET=$(SECRET):latest,AUTHZ_CLIENT_SECRET=$(AUTHZ_SECRET):latest"
 	@$(MAKE) verify
 
+# Register this service as an available Service Extension (the gateway's
+# authz policy in ../agent-gateway only routes to it after `make attach`
+# binds it). Re-runnable any time — e.g. after the Cloud Run URL changed.
+register: require-env
+	@test -n "$(URL)" || { echo "service $(GC_CLOUD_RUN_SERVICE_NAME) not found — run make deploy first"; exit 1; }
+	@echo "register"
+	@EXTENSION_SERVICE_HOST=$$(printf '%s' "$(URL)" | sed 's|https://||'); \
+	export PROJECT_ID GC_REGION GC_SERVICE_EXTENSION_NAME EXTENSION_SERVICE_HOST; \
+	envsubst < service-extension.tmpl.yaml > $(EXT_YAML); \
+	grep -q "authority: $$EXTENSION_SERVICE_HOST" $(EXT_YAML) \
+		|| { echo "FAIL rendered $(EXT_YAML) lost authority: $$EXTENSION_SERVICE_HOST"; exit 1; }; \
+	out=$$(gcloud beta service-extensions authz-extensions import $(GC_SERVICE_EXTENSION_NAME) \
+		--source $(EXT_YAML) --location $(GC_REGION) --project $(PROJECT_ID) 2>&1) \
+	|| { echo "FAIL authz extension import"; \
+		echo "$$out" | grep -v "^Waiting" | grep -v "^\.*done"; exit 1; }; \
+	echo "PASS imported authzExtensions/$(GC_SERVICE_EXTENSION_NAME)"; \
+	rm -f $(EXT_YAML)
+
 # Live checks before any image is pushed: PingOne mints (extension app +
-# Authorize worker), JWKS serves keys, decision endpoint answers, tool /health.
+# Authorize worker), JWKS serves keys, decision endpoint answers.
 # Tokens never printed — only client-id prefixes.
 preflight:
 	@echo "preflight"
@@ -77,22 +95,22 @@ preflight:
 	@code=$$(curl -s -o /dev/null -w '%{http_code}' \
 		-u "$(EXCHANGE_CLIENT_ID):$(EXCHANGE_CLIENT_SECRET)" \
 		-H 'Content-Type: application/x-www-form-urlencoded' \
-		-d grant_type=client_credentials "$(IDP_TOKEN_ENDPOINT)"); \
+		-d grant_type=client_credentials "$(IDP_ISSUER)/token"); \
 	test "$$code" = 200 || { echo "FAIL actor    PingOne token mint HTTP $$code"; \
 		echo "  400 → wrong EXCHANGE_CLIENT_ID/SECRET (PingOne app: Agent Gateway Extension Application)"; \
 		echo "  401 → bad secret"; \
 		echo "  403 → Client Credentials grant missing on that app"; exit 1; }; \
 	echo "PASS actor    PingOne app $$(printf '%s' "$(EXCHANGE_CLIENT_ID)" | cut -c1-8)… minted (RFC 8693 actor token)"
-	@jwks="$$(printf '%s' "$(IDP_TOKEN_ENDPOINT)" | sed 's|/token$$||')/jwks"; \
+	@jwks="$(IDP_ISSUER)/jwks"; \
 	code=$$(curl -s -o /tmp/baatt-pf-jwks.json -w '%{http_code}' "$$jwks"); \
 	keys=$$(jq '.keys | length' /tmp/baatt-pf-jwks.json 2>/dev/null); \
 	rm -f /tmp/baatt-pf-jwks.json; \
 	test "$$code" = 200 && test "$$keys" -ge 1 || { echo "FAIL jwks     HTTP $$code, $$keys key(s) at $$jwks"; \
-		echo "  Derived from IDP_TOKEN_ENDPOINT (…/as/token → …/as/jwks) — check IDP_TOKEN_ENDPOINT."; exit 1; }; \
+		echo "  Check IDP_ISSUER (…/as) and that JWKS is reachable."; exit 1; }; \
 	echo "PASS jwks     $$keys signing key(s)"
 	@atok=$$(curl -s -u "$(AUTHZ_CLIENT_ID):$(AUTHZ_CLIENT_SECRET)" \
 		-H 'Content-Type: application/x-www-form-urlencoded' \
-		-d grant_type=client_credentials "$(IDP_TOKEN_ENDPOINT)" | jq -r '.access_token // empty'); \
+		-d grant_type=client_credentials "$(IDP_ISSUER)/token" | jq -r '.access_token // empty'); \
 	test -n "$$atok" || { echo "FAIL authz    worker token mint failed (check AUTHZ_CLIENT_ID/SECRET — PingOne Authorize Worker app)"; exit 1; }; \
 	dcode=$$(curl -s -o /tmp/baatt-pf-dec.json -w '%{http_code}' \
 		-H "Authorization: Bearer $$atok" -H 'Content-Type: application/json' \
@@ -104,13 +122,8 @@ preflight:
 		echo "  401 → worker token rejected; 404 → wrong AUTHZ_DECISION_ENDPOINT id"; \
 		echo "  429 → rate limited (latest-version endpoint) — wait a few seconds, re-run"; exit 1; }; \
 	echo "PASS authz    worker $$(printf '%s' "$(AUTHZ_CLIENT_ID)" | cut -c1-8)… decision=$$decision (unknown agent)"
-	@code=$$(curl -s -o /dev/null -w '%{http_code}' "$(TOOL_URL)/health"); \
-	test "$$code" = 200 || { echo "FAIL tool     /health HTTP $$code at $(TOOL_URL)"; \
-		echo "  Deploy it first: (cd ../supply-chain-mcp-tool && make deploy)"; \
-		echo "  403 → tool stuck private; 404 → wrong TOOL_URL"; exit 1; }; \
-	echo "PASS tool     /health 200 — $(TOOL_URL)"
 	@echo ""
-	@echo "✔ PREFLIGHT PASSED — identity chain and downstream tool reachable"
+	@echo "✔ PREFLIGHT PASSED — identity chain verified"
 
 # Probes the deployed revision over raw ExternalProcessor/Process gRPC
 # (hand-encoded protobuf via curl, no grpcurl). Wire shapes, LEN-tagged:
@@ -118,7 +131,8 @@ preflight:
 #   HeaderMap.headers = 1 → 0a | HeaderValue key=1 → 0a, value=2 → 12
 #   ProcessingResponse.immediate_response = 7 → 3a; status varints:
 #   401 = 089103, 403 = 089303, 200 = 08c801. Passthrough reply starts 0a.
-# Contract: no bearer → 401, garbage bearer → 401, other authority → pass.
+# Contract: no bearer → 401, garbage bearer → 401, unregistered MCP host
+# (/mcp path, other authority) → 403, non-MCP traffic → passthrough.
 # Cold starts get 3 tries 2s apart; wrong verdicts never retry.
 verify:
 	@test -n "$(URL)" || { echo "service $(GC_CLOUD_RUN_SERVICE_NAME) not found — run make deploy first"; exit 1; }
@@ -161,16 +175,16 @@ verify:
 		printf '%s%s' "$$2" "$$(varint $$(( $${#1} / 2 )))$${1}"; \
 	}; \
 	build_req() { \
-		hdr_map="$$(hdr_entry ':method' POST)$$(hdr_entry ':authority' "$$1")$$(hdr_entry ':path' /mcp)"; \
-		if [ -n "$$2" ]; then \
-			hdr_map="$$hdr_map$$(hdr_entry authorization "$$2")"; \
+		hdr_map="$$(hdr_entry ':method' POST)$$(hdr_entry ':authority' "$$1")$$(hdr_entry ':path' "$$2")"; \
+		if [ -n "$$3" ]; then \
+			hdr_map="$$hdr_map$$(hdr_entry authorization "$$3")"; \
 		fi; \
 		hdrs="$$(wrap "$$hdr_map" 0a)"; \
 		pr="$$(wrap "$$hdrs" 12)"; \
 		printf '00%08x%s' $$(( $${#pr} / 2 )) "$$pr"; \
 	}; \
 	probe() { \
-		req=$$(build_req "$$2" "$$3"); \
+		req=$$(build_req "$$2" "$$3" "$$4"); \
 		resp=""; \
 		for i in 1 2 3; do \
 			resp=$$(call_grpc "$$req"); \
@@ -181,10 +195,10 @@ verify:
 		if [ "$$v" = bad ] || [ "$$v" = imm ]; then \
 			echo "FAIL $$1 — no/unknown gRPC reply (got '$$v')"; \
 			echo "  Is the service up with --port 50051 --use-http2 --ingress=all --allow-unauthenticated?"; \
-			echo "  gcloud run services logs tail $(GC_CLOUD_RUN_SERVICE_NAME) --region $(GC_REGION)"; \
+			echo "  gcloud beta run services logs read $(GC_CLOUD_RUN_SERVICE_NAME) --region $(GC_REGION) --limit 50"; \
 			exit 1; \
 		fi; \
-		if [ "$$4" = 401 ]; then \
+		if [ "$$5" = 401 ]; then \
 			[ "$$v" = 401 ] && { echo "PASS $$1 → 401 immediate (fail closed)"; return 0; }; \
 			[ "$$v" = 403 ] && { echo "FAIL $$1 → 403, expected 401"; \
 				echo "  A 403 means inbound validation never ran and the exchange failed instead —"; \
@@ -194,23 +208,33 @@ verify:
 				echo "  TOOL_URL on the deployed revision does not match the tool host, or the"; \
 				echo "  revision predates the auth code. Redeploy."; exit 1; }; \
 			echo "FAIL $$1 → unexpected status $$v"; exit 1; \
+		elif [ "$$5" = 403 ]; then \
+			[ "$$v" = 403 ] && { echo "PASS $$1 → 403 immediate (unregistered MCP host fails closed)"; return 0; }; \
+			[ "$$v" = pass ] && { echo "FAIL $$1 was passed through unvalidated"; \
+				echo "  The deployed revision predates the unregistered-MCP-host deny — redeploy."; exit 1; }; \
+			echo "FAIL $$1 → $$v, expected 403"; exit 1; \
 		else \
-			[ "$$v" = pass ] && { echo "PASS $$1 → passthrough (only the tool hop is guarded)"; return 0; }; \
+			[ "$$v" = pass ] && { echo "PASS $$1 → passthrough (non-MCP traffic is not this service's job)"; return 0; }; \
 			echo "FAIL $$1 was denied ($$v), expected passthrough"; \
-			echo "  The extension must pass through authorities other than TOOL_URL."; exit 1; \
+			echo "  The extension must pass through non-MCP traffic (engine session calls)."; exit 1; \
 		fi; \
 	}; \
-	probe "no bearer on tool host"      "$$TOOL_HOST" "" "401" && \
-	probe "garbage bearer on tool host" "$$TOOL_HOST" "Bearer not-a-real-token" "401" && \
-	probe "other authority"             "unrelated.example.com" "Bearer not-a-real-token" "pass" || exit 1; \
+	probe "no bearer on tool host"      "$$TOOL_HOST" "/mcp" "" "401" && \
+	probe "garbage bearer on tool host" "$$TOOL_HOST" "/mcp" "Bearer not-a-real-token" "401" && \
+	probe "unregistered MCP host"       "unrelated.example.com" "/mcp" "Bearer not-a-real-token" "403" && \
+	probe "non-MCP path"                "unrelated.example.com" "/v1beta1/sessions/abc" "Bearer not-a-real-token" "pass" || exit 1; \
 	echo ""; \
 	echo "✔ VERIFIED — ext_proc is live and fails closed"
 
 logs:
-	gcloud run services logs tail $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION)
+	gcloud beta run services logs read $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) --limit 50
 
-destroy:
+destroy: require-env
 	@echo "destroy $(GC_CLOUD_RUN_SERVICE_NAME)"
+	@if gcloud beta service-extensions authz-extensions describe $(GC_SERVICE_EXTENSION_NAME) --location $(GC_REGION) --project $(PROJECT_ID) >/dev/null 2>&1; then \
+		gcloud beta service-extensions authz-extensions delete $(GC_SERVICE_EXTENSION_NAME) --location $(GC_REGION) --project $(PROJECT_ID) --quiet >/dev/null \
+			&& echo "PASS authzext $(GC_SERVICE_EXTENSION_NAME) deleted" || { echo "FAIL authzext $(GC_SERVICE_EXTENSION_NAME) — delete the policy in ../agent-gateway first (it binds this)"; exit 1; }; \
+	else echo "SKIP authzext $(GC_SERVICE_EXTENSION_NAME) (not found)"; fi
 	@if gcloud run services describe $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) >/dev/null 2>&1; then \
 		gcloud run services delete $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) --quiet >/dev/null \
 			&& echo "PASS service  deleted" || { echo "FAIL service  delete"; exit 1; }; \
@@ -230,3 +254,4 @@ destroy:
 		gcloud container images delete $(IMAGE) --quiet --force-delete-tags >/dev/null \
 			&& echo "PASS image    deleted" || { echo "FAIL image    delete"; exit 1; }; \
 	else echo "SKIP image    (not found)"; fi
+	@rm -f $(EXT_YAML)

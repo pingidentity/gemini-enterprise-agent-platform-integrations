@@ -17,7 +17,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/joho/godotenv"
+	"cloud.google.com/go/compute/metadata"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
@@ -25,18 +25,33 @@ import (
 )
 
 func main() {
-	_ = godotenv.Load()
-
 	port := os.Getenv("GRPC_PORT")
 	if port == "" {
 		port = "50051"
 	}
 
+	// Project ID comes from the Cloud Run metadata server when not set — the
+	// service always runs inside its own project, so the derived value is the
+	// canonical project-ID-string form by construction. The env var remains as
+	// an override for local debugging (no metadata server off Cloud Run).
+	projectID := os.Getenv("GC_PROJECT_ID")
+	if projectID == "" {
+		p, err := metadata.ProjectID()
+		if err != nil {
+			log.Fatalf("resolve project id: %v (set GC_PROJECT_ID to run locally)", err)
+		}
+		projectID = p
+	}
+
 	shim, err := newShim(shimConfig{
-		agentGatewayAudience: os.Getenv("AGENT_GATEWAY_AUDIENCE"),
-		a2aURL:               os.Getenv("A2A_TARGET_URL"), a2aAudience: os.Getenv("A2A_REQUIRED_AUDIENCE"), a2aScope: os.Getenv("A2A_REQUIRED_SCOPE"),
-		mcpURL: os.Getenv("MCP_TARGET_URL"), mcpAudience: os.Getenv("MCP_REQUIRED_AUDIENCE"), mcpScope: os.Getenv("MCP_REQUIRED_SCOPE"),
-		idpEndpoint: os.Getenv("IDP_TOKEN_ENDPOINT"), idpClientID: os.Getenv("IDP_CLIENT_ID"), idpSecret: os.Getenv("IDP_CLIENT_SECRET"),
+		projectID:          projectID,
+		region:             os.Getenv("GC_REGION"),
+		agentEngineID:      os.Getenv("AGENT_ENGINE_ID"),
+		requiredAudience:   os.Getenv("IDP_REQUIRED_AUDIENCE"),
+		agentRequiredScope: os.Getenv("IDP_REQUIRED_SCOPE_AGENT"), toolRequiredScope: os.Getenv("IDP_REQUIRED_SCOPE_TOOL"),
+		agentAudience: os.Getenv("AGENT_AUDIENCE"), agentScope: os.Getenv("AGENT_SCOPE"),
+		toolURL:       os.Getenv("TOOL_URL"), toolAudience: os.Getenv("TOOL_AUDIENCE"), toolScope: os.Getenv("TOOL_SCOPE"),
+		idpEndpoint:   os.Getenv("IDP_ISSUER") + "/token", idpClientID: os.Getenv("EXCHANGE_CLIENT_ID"), idpSecret: os.Getenv("EXCHANGE_CLIENT_SECRET"),
 		authzEndpoint: os.Getenv("AUTHZ_DECISION_ENDPOINT"), authzClientID: os.Getenv("AUTHZ_CLIENT_ID"), authzClientSecret: os.Getenv("AUTHZ_CLIENT_SECRET"),
 	})
 	if err != nil {

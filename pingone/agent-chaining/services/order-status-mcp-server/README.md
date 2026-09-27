@@ -70,6 +70,6 @@ Register the server in the Agent Registry (Agent Platform → Govern → Agent R
 - **MCP Server URL:** `<Cloud Run service URL>/mcp`
 - **Tool specification JSON:** Paste the contents of `tool-spec.json`
 
-The registered URL must **host-match the URL the Order Status Agent actually calls** (see `MCP_ORDER_STATUS_SERVER_URL` in its `.env`) — IAP resolves egress to a registry destination by host, and an unmatched host is denied closed before the gateway extension is ever invoked. No extra IAM grant is needed after registration: the engines' registry-wide `roles/iap.egressor` binding (applied by each agent's `deploy.py`) is the only egress enforcement.
+The registered URL must **host-match the URL the Order Status Agent actually calls** (see `TOOL_URL` in its `.env`) — IAP resolves egress to a registry destination by host, and an unmatched host is denied closed before the gateway extension is ever invoked. No extra IAM grant is needed after registration: the engines' registry-wide `roles/iap.egressor` binding (applied by each agent's `deploy.py`) is the only egress enforcement.
 
 ![Order Status MCP Server GCP Config](../../../../_docs/agent-chaining/order-status-mcp-server-gcp-config.png)

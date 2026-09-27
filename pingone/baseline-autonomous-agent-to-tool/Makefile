@@ -25,10 +25,10 @@ test:
 	@$(MAKE) -C $(S)/agent-gateway verify-attach
 	@echo ""
 	@echo "── agent ──"
-	@pid=$$(grep -E '^GC_PROJECT_ID=' $(S)/agent/.env | cut -d= -f2); \
+	@pid=$$(gcloud config get-value project 2>/dev/null); \
 	region=$$(grep -E '^GC_REGION=' $(S)/agent/.env | cut -d= -f2); \
 	display=$$(grep -E '^AGENT_DISPLAY_NAME=' $(S)/agent/.env | cut -d= -f2); \
-	test -n "$$pid" && test -n "$$display" || { echo "FAIL $(S)/agent/.env incomplete (GC_PROJECT_ID / AGENT_DISPLAY_NAME)"; exit 1; }; \
+	test -n "$$pid" && test -n "$$display" || { echo "FAIL $(S)/agent/.env incomplete (GC_REGION / AGENT_DISPLAY_NAME) or gcloud project unset"; exit 1; }; \
 	engines=$$(curl -s -H "Authorization: Bearer $$(gcloud auth print-access-token)" \
 		"https://aiplatform.googleapis.com/v1/projects/$$pid/locations/$$region/reasoningEngines" \
 		| jq '[.reasoningEngines[]? | select(.displayName=="'$$display'")] | length'); \
@@ -36,7 +36,7 @@ test:
 	echo "PASS engine  $$display exists"
 	@echo ""
 	@echo "── end-to-end ──"
-	@pid=$$(grep -E '^GC_PROJECT_ID=' $(S)/agent/.env | cut -d= -f2); \
+	@pid=$$(gcloud config get-value project 2>/dev/null); \
 	region=$$(grep -E '^GC_REGION=' $(S)/agent/.env | cut -d= -f2); \
 	display=$$(grep -E '^AGENT_DISPLAY_NAME=' $(S)/agent/.env | cut -d= -f2); \
 	tok=$$(gcloud auth print-access-token); \

@@ -52,7 +52,9 @@ func (v *tokenValidator) middleware(next http.Handler) http.Handler {
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			log.Printf("[SupplyChain] REJECT — no Bearer token")
 			w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-			http.Error(w, "missing Bearer token", http.StatusUnauthorized)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"invalid_token"}`)
 			return
 		}
 
@@ -67,11 +69,15 @@ func (v *tokenValidator) middleware(next http.Handler) http.Handler {
 			if errors.Is(err, errInsufficientScope) {
 				w.Header().Set("WWW-Authenticate",
 					fmt.Sprintf(`Bearer error="insufficient_scope", scope=%q`, v.requiredScope))
-				http.Error(w, "insufficient scope", http.StatusForbidden)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				fmt.Fprint(w, `{"error":"insufficient_scope"}`)
 				return
 			}
 			w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-			http.Error(w, "invalid token", http.StatusUnauthorized)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"invalid_token"}`)
 			return
 		}
 
@@ -89,8 +95,12 @@ func (v *tokenValidator) middleware(next http.Handler) http.Handler {
 		sub, _ := tok.Get("sub")
 		aud, _ := tok.Get("aud")
 		scope, _ := tok.Get("scope")
-		log.Printf("[SupplyChain] Token verified — sub=%v aud=%v act.sub=%s scope=%q forwarding to MCP handler", sub, aud, actSub, scope)
-		next.ServeHTTP(w, r)
+		// Email is injected by the extension service; empty for tool-discovery requests.
+		email := r.Header.Get("X-User-Email")
+		log.Printf("[SupplyChain] Token verified — sub=%v aud=%v act.sub=%s scope=%q caller=%s", sub, aud, actSub, scope, email)
+
+		ctx := context.WithValue(r.Context(), ctxKeyCallerEmail, email)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
