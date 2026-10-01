@@ -7,10 +7,42 @@ Support Agent → native A2A → Order Status Agent
 Order Status Agent → MCP → Order Status MCP Server
 ```
 
-For each matched target it:
-1. Validates the caller's delegated token: `iss`, `aud`, and `scope`
-2. On the hop's one known action (A2A `message:send`, MCP `tools/call`), calls PingOne Authorize with the user's identity and the request hour; any error, DENY, or unknown body gets an immediate 403 — fail closed, no passthrough
-3. On PERMIT, injects the token it reminted via an RFC 8693 exchange to the hop's final audience — `Authorization: Bearer` on the MCP hop; body metadata on the A2A hop, whose `Authorization` instead carries the Google credential that endpoint's IAM check requires
+For a request matching a target (MCP traffic aimed at no configured target is denied; other non-target traffic — the engines' own Agent Runtime session calls — passes through untouched):
+
+```
+header phase   1. VALIDATE   the caller's delegated bearer: signature via JWKS,
+                              then iss (shared gateway audience), scope
+                              (per-target)                   → 401 on failure
+               2. REMINT     RFC 8693: validated token as subject, this
+                              service's client_credentials token as actor,
+                              audienced to the hop's real final audience
+                                                             → 403 on failure
+               3. INJECT     MCP hop → the reminted token as Authorization:
+                              Bearer. A2A hop → Authorization instead carries a
+                              Google credential (that endpoint's own IAM check);
+                              the reminted token rides in the body's metadata
+                              (dual-auth)
+body phase     4. AUTHORIZE  on the hop's one known action (A2A message:send,
+                              MCP tools/call): PingOne Authorize decides
+                              PERMIT/DENY (user sub + request hour). Any error,
+                              DENY, or unknown body → 403 immediately — fail
+                              closed, no passthrough. On PERMIT the dual-auth
+                              body gets the reminted token in metadata.
+```
+
+It fails closed: every failure above returns an immediate error, and the request never reaches the target. Startup also fails closed — a missing required env var aborts the deploy rather than degrading into a service that skips checks. PingOne Authorize has no bypass mode.
+
+### Where to change what
+
+| To change... | Edit | Where |
+|---|---|---|
+| Which outbound traffic is governed | the `targets` list built in `newProcessor` + `findTargetForRequest` | `main.go` + `request_policy.go` |
+| What the inbound token must carry | `IDP_REQUIRED_AUDIENCE` / `IDP_REQUIRED_SCOPE_AGENT` / `IDP_REQUIRED_SCOPE_TOOL` env vars | `.env` |
+| What the policy decides on | the `buildDecisionRequestParams` map + the Trust Framework attributes | `request_policy.go` + PingOne console |
+| Which bodies trigger Authorize | `parseRequestActionAndOrderID` (the A2A message-part and MCP `tools/call` shapes) | `request_policy.go` |
+| What the outbound tokens are minted for | `AGENT_AUDIENCE`/`AGENT_SCOPE` / `TOOL_AUDIENCE`/`TOOL_SCOPE` env vars | `.env` |
+
+Code layout, in reading order: `main.go` (flow overview + two-target wiring) → `request_policy.go` (per-request decisions — the file you edit) → `gateway_responses.go` (how we answer the gateway — stream loop + builders, incl. the full-body replace for dual-auth) → `p1_token_exchange.go` (RFC 8693 remint, per-target + per-scope caches) → `auth.go` (JWKS validation, one validator per target) → `google_credentials.go` (Google credential for the A2A hop's IAM check) → `p1_authz_client.go` (Authorize transport) → `util.go` (generic helpers).
 
 ## Configure
 
@@ -98,6 +130,11 @@ cp .env.sample .env
 
 ```bash
 make deploy
+make register
 ```
 
-`deploy` runs `setup`, then `push`, then `gcloud run deploy`.
+`deploy` runs `setup`, then `push`, then `gcloud run deploy` — the Cloud Run service only.
+`register` imports this service as an available Service Extension (rendering
+`service-extension.tmpl.yaml` with the live Cloud Run URL). It's re-runnable any
+time, e.g. after the URL changed; the gateway only routes to it after the policy
+in ../agent-gateway binds it — see the [agent-gateway README](../agent-gateway/README.md).

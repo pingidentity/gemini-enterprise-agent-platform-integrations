@@ -1,23 +1,30 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"log"
 	"os"
 	"regexp"
 )
 
 var orderIDPattern = regexp.MustCompile(`^ORD-[0-9]+$`)
 
-func requireEnv(name string) (string, error) {
-	value := getenv(name)
-	if value == "" {
-		return "", fmt.Errorf("%s is required", name)
+type ctxKeyCallerSub struct{}
+
+// requireEnv returns the value of the given environment variable or fatally exits if unset.
+func requireEnv(name string) string {
+	val := os.Getenv(name)
+	if val == "" {
+		log.Fatalf("required environment variable %s is not set", name)
 	}
-	return value, nil
+	return val
 }
 
-func getenv(name string) string {
-	return os.Getenv(name)
+// callerSubFromCtx returns the caller sub the middleware put in the request
+// context.
+func callerSubFromCtx(ctx context.Context) string {
+	caller, _ := ctx.Value(ctxKeyCallerSub{}).(string)
+	return caller
 }
 
 func validOrderID(value string) bool {

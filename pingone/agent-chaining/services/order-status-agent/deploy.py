@@ -12,10 +12,35 @@ from agentplatform import agent_engines, types
 from dotenv import load_dotenv
 
 load_dotenv()
-from agent import root_agent  # noqa: E402
+
+# Derive the project ID before anything consumes it: gcloud is the source of
+# truth on the deploy host, and `projects describe` normalizes a configured
+# project number into the canonical string form (the form every resource
+# reference here requires). Set GC_PROJECT_ID to override.
+if not os.environ.get("GC_PROJECT_ID"):
+    raw = subprocess.run(
+        ["gcloud", "config", "get-value", "project"], capture_output=True, text=True
+    ).stdout.strip()
+    if not raw:
+        raise SystemExit(
+            "GC_PROJECT_ID not set and gcloud has no active project — "
+            "run `gcloud config set project <id>` or set GC_PROJECT_ID in .env"
+        )
+    if raw.isdigit():
+        raw = subprocess.run(
+            ["gcloud", "projects", "describe", raw, "--format=value(projectId)"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+    os.environ["GC_PROJECT_ID"] = raw
 
 PROJECT_ID = os.environ["GC_PROJECT_ID"]
 REGION = os.environ["GC_REGION"]
+
+# The gateway is configured by bare name; the full resource path is built here
+# so the project-ID-string form is guaranteed by construction.
+GATEWAY_RESOURCE = (
+    f"projects/{PROJECT_ID}/locations/{REGION}/agentGateways/{os.environ['GC_AGENT_GATEWAY']}"
+)
 
 
 def staging_bucket() -> str:
@@ -82,8 +107,8 @@ config = {
     "staging_bucket": staging_bucket(),
     "display_name": os.environ["AGENT_DISPLAY_NAME"],
     "identity_type": types.IdentityType.AGENT_IDENTITY,
-    "agent_gateway_config": {"agent_to_anywhere_config": {"agent_gateway": os.environ["GC_AGENT_GATEWAY"]}},
-    "env_vars": {key: value for key, value in os.environ.items() if key.startswith(("GC_", "A2A_", "MCP_", "AGENT_", "LOCAL_"))},
+    "agent_gateway_config": {"agent_to_anywhere_config": {"agent_gateway": GATEWAY_RESOURCE}},
+    "env_vars": {key: value for key, value in os.environ.items() if key.startswith(("GC_", "AGENT_", "IDP_", "GATEWAY_", "TOOL_", "LOCAL_"))},
 }
 
 print("Creating agent engine...")

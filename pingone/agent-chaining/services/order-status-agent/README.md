@@ -49,19 +49,17 @@ cp .env.sample .env
 
 | Variable | Value |
 |---|---|
-| `GC_PROJECT_ID` | Target project ID |
-| `GC_REGION` | Deploy region, e.g. `us-central1` |
+| `GC_REGION` | Deploy region, e.g. `us-central1` (the project ID is derived from gcloud at deploy time) |
 | `AGENT_DISPLAY_NAME` | Display name for the Reasoning Engine, e.g. `ac-order-status-agent` |
-| `GC_AGENT_GATEWAY` | Full gateway path: `projects/<id>/locations/<region>/agentGateways/<name>` |
-| `A2A_ORDER_STATUS_AUDIENCE` | Audience accepted on the inbound A2A token (`order-status-agent`) |
-| `A2A_ORDER_STATUS_SCOPE` | Scope accepted on the inbound A2A token (`order-status:invoke`) |
-| `MCP_ORDER_STATUS_SERVER_URL` | The Order Status MCP Server's `/mcp` endpoint |
-| `MCP_ORDER_STATUS_SCOPE` | Scope requested on the MCP hop (`order:read`) |
-| `ORDER_STATUS_AGENT_ID` | Agent identifier, e.g. `order-status-agent` |
-| `AGENT_GATEWAY_AUDIENCE` | Shared intermediate PingOne audience this agent's own exchange targets — must match the gateway extension's config |
-| `AGENT_IDP_TOKEN_ENDPOINT` | PingOne token endpoint, e.g. `https://auth.pingone.<region>/<env-id>/as/token` |
-| `AGENT_IDP_CLIENT_ID` | Agent's PingOne client ID |
-| `AGENT_IDP_CLIENT_SECRET` | Agent's PingOne client secret |
+| `GC_AGENT_GATEWAY` | Bare gateway name, e.g. `ac-agent-gateway` (the full resource path is built from the derived project ID) |
+| `IDP_REQUIRED_AUDIENCE` | Audience accepted on the inbound A2A token (`order-status-agent`) |
+| `IDP_REQUIRED_SCOPE` | Scope accepted on the inbound A2A token (`order-status:invoke`) |
+| `TOOL_URL` | The Order Status MCP Server's `/mcp` endpoint |
+| `TOOL_SCOPE` | Scope requested on the MCP hop (`order:read`) |
+| `GATEWAY_AUDIENCE` | Shared intermediate PingOne audience this agent's own exchange targets — must match the gateway extension's config |
+| `IDP_ISSUER` | PingOne issuer, e.g. `https://auth.pingone.<region>/<env-id>/as` |
+| `AGENT_CLIENT_ID` | Agent's PingOne client ID |
+| `AGENT_CLIENT_SECRET` | Agent's PingOne client secret |
 
 ## Deploy
 

@@ -6,16 +6,16 @@ import time
 
 import httpx
 
-_ENDPOINT = os.environ["AGENT_IDP_TOKEN_ENDPOINT"]
-_CLIENT_ID = os.environ["AGENT_IDP_CLIENT_ID"]
-_CLIENT_SECRET = os.environ["AGENT_IDP_CLIENT_SECRET"]
+_ENDPOINT = os.environ["IDP_ISSUER"].rstrip("/") + "/token"
+_CLIENT_ID = os.environ["AGENT_CLIENT_ID"]
+_CLIENT_SECRET = os.environ["AGENT_CLIENT_SECRET"]
 # Targets the shared intermediate "agent-gateway" audience, not the real
 # order-status-mcp-server audience directly — the gateway extension performs
 # the real exchange to order-status-mcp-server on top of this one. See the
 # gateway extension's .env.sample for why (keeps order-status-mcp-server's
 # PingOne resource purely terminal instead of being touched by two exchanges).
-_AUDIENCE = os.environ.get("AGENT_GATEWAY_AUDIENCE", "ac-google-cloud-agent-gateway")
-_SCOPE = os.environ["MCP_ORDER_STATUS_SCOPE"]
+_AUDIENCE = os.environ.get("GATEWAY_AUDIENCE", "ac-google-cloud-agent-gateway")
+_SCOPE = os.environ["TOOL_SCOPE"]
 
 _lock = threading.Lock()
 _actor_token = ""

@@ -35,7 +35,7 @@ func registerOrderStatusTool(s *server.MCPServer) {
 			"summary":      order[1],
 			"last_updated": time.Now().UTC().Format(time.RFC3339),
 		}
-		caller, _ := ctx.Value(ctxKeyCallerSub{}).(string)
+		caller := callerSubFromCtx(ctx)
 		log.Printf("[OrderStatusMCP] tool=get_order_status — caller=%s order=%s status=%s", caller, orderID, order[0])
 		return mcp.NewToolResultStructured(result, ""), nil
 	}

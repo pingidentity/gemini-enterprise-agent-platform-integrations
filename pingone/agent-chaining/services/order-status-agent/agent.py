@@ -19,14 +19,11 @@ from agentplatform.agent_engines.templates.a2a import A2aAgent, create_agent_car
 
 from pingone import exchange_for_mcp
 
-MCP_URL = os.environ["MCP_ORDER_STATUS_SERVER_URL"]
-EXPECTED_AUDIENCE = os.environ.get("A2A_ORDER_STATUS_AUDIENCE", "order-status-agent")
-EXPECTED_SCOPE = os.environ.get("A2A_ORDER_STATUS_SCOPE", "order-status:invoke")
-TOKEN_ENDPOINT = os.environ["AGENT_IDP_TOKEN_ENDPOINT"]
-ISSUER = os.environ.get(
-    "IDP_ISSUER",
-    TOKEN_ENDPOINT.removesuffix("/token").rstrip("/"),
-).rstrip("/")
+TOOL_URL = os.environ["TOOL_URL"]
+EXPECTED_AUDIENCE = os.environ.get("IDP_REQUIRED_AUDIENCE", "order-status-agent")
+EXPECTED_SCOPE = os.environ.get("IDP_REQUIRED_SCOPE", "order-status:invoke")
+ISSUER = os.environ["IDP_ISSUER"].rstrip("/")
+TOKEN_ENDPOINT = f"{ISSUER}/token"
 JWKS_URL = f"{ISSUER}/jwks"
 
 _jwks: dict[str, Any] | None = None
@@ -43,7 +40,7 @@ def _jwks_keys() -> dict[str, Any]:
 
 def _validate_inbound_token(token: str) -> dict[str, Any]:
     """Validate the Support Agent delegation before using it as a subject token."""
-    if not token or token.startswith("local-rfc8693."):
+    if not token:
         raise ValueError("a signed PingOne delegated token is required")
     try:
         header = jwt.get_unverified_header(token)
@@ -113,7 +110,7 @@ def _call_order_mcp(order_id: str, token: str) -> dict[str, Any]:
     downstream_token = exchange_for_mcp(token)
     print("[OrderStatusAgent] exchanged for MCP token (aud=order-status-mcp-server), calling MCP server order_id=" + order_id, flush=True)
     response = httpx.post(
-        MCP_URL,
+        TOOL_URL,
         json={
             "jsonrpc": "2.0",
             "id": str(uuid4()),

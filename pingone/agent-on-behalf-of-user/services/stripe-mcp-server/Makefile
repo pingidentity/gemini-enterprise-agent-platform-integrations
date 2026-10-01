@@ -48,8 +48,8 @@ destroy: require-env
 		gcloud run services delete $(GC_CLOUD_RUN_SERVICE_NAME) --project $(PROJECT_ID) --region $(GC_REGION) --quiet >/dev/null \
 			&& echo "PASS service  deleted" || { echo "FAIL service  delete"; exit 1; }; \
 	else echo "SKIP service  (not found)"; fi
-	@if gcloud container images describe $(IMAGE) >/dev/null 2>&1; then \
-		gcloud container images delete $(IMAGE) --quiet --force-delete-tags >/dev/null \
+	@if digest=$$(gcloud container images describe $(IMAGE) --format='value(image_summary.fullyQualifiedDigest)' 2>/dev/null); then \
+		gcloud container images delete $$digest --quiet --force-delete-tags >/dev/null 2>&1 \
 			&& echo "PASS image    deleted" || { echo "FAIL image    delete"; exit 1; }; \
 	else echo "SKIP image    (not found)"; fi
 
