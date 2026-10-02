@@ -14,6 +14,7 @@ require-env:
 	@test -n "$(GC_CLOUD_RUN_SERVICE_NAME)"  || { echo "GC_CLOUD_RUN_SERVICE_NAME not set"; exit 1; }
 	@test -n "$(AGENT_ENGINE_ID)"            || { echo "AGENT_ENGINE_ID not set"; exit 1; }
 	@test -n "$(CORS_ORIGIN)"                || { echo "CORS_ORIGIN not set"; exit 1; }
+	@test -n "$(IDP_REQUIRED_AUDIENCE)"      || { echo "IDP_REQUIRED_AUDIENCE not set"; exit 1; }
 	@test -n "$(IDP_ISSUER)"                 || { echo "IDP_ISSUER not set"; exit 1; }
 
 push:
@@ -35,7 +36,7 @@ deploy: require-env setup push
 		--region $(GC_REGION) \
 		--service-account $(SA) \
 		--allow-unauthenticated --no-invoker-iam-check \
-		--set-env-vars "GC_REGION=$(GC_REGION),AGENT_ENGINE_ID=$(AGENT_ENGINE_ID),CORS_ORIGIN=$(CORS_ORIGIN),IDP_ISSUER=$(IDP_ISSUER)"
+		--set-env-vars "GC_REGION=$(GC_REGION),AGENT_ENGINE_ID=$(AGENT_ENGINE_ID),CORS_ORIGIN=$(CORS_ORIGIN),IDP_ISSUER=$(IDP_ISSUER),IDP_REQUIRED_AUDIENCE=$(IDP_REQUIRED_AUDIENCE)"
 
 destroy:
 	@$(MAKE) clean

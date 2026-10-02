@@ -1,11 +1,10 @@
-"""Mints the agent's PingOne identity token and attaches it to every MCP request.
+"""
+Mints the agent's PingOne identity token and attaches it to every MCP request.
 
 The agent authenticates as itself (client_credentials, no user context — this is
 the autonomous-agent journey). The gateway's extension service validates this
 token, asks PingOne Authorize for a PERMIT/DENY, then exchanges it for a
-tool-scoped token before the request reaches the MCP tool. Caching: one token,
-refreshed 30s before expiry, guarded by a lock because ADK runs concurrent
-async tool calls.
+tool-scoped token before the request reaches the MCP tool.
 """
 
 import threading

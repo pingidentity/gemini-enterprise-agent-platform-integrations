@@ -1,4 +1,5 @@
-"""The financial agent: an ADK agent that buys Stripe products on behalf of a logged-in user.
+"""
+The financial agent: an ADK agent that buys Stripe products on behalf of a logged-in user.
 
 Every MCP request carries a delegated PingOne token (subject=user, actor=agent —
 minted by `pingone.py` from the user's login token in session state). The Agent
@@ -9,6 +10,7 @@ token before the request reaches the Stripe MCP server.
 from google.adk.agents import Agent
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+from google.genai import types as genai_types
 from config import TOOL_MCP_URL
 from pingone import mcp_headers
 
@@ -18,7 +20,7 @@ stripe_tool = McpToolset(
     header_provider=mcp_headers,
 )
 
-# root_agent is the name ADK's deploy surface looks for — do not rename.
+
 root_agent = Agent(
     model="gemini-2.5-flash",
     name="aobou_financial_agent",
@@ -36,4 +38,7 @@ root_agent = Agent(
         "calling create_stripe_payment_intent."
     ),
     tools=[stripe_tool],
+    generate_content_config=genai_types.GenerateContentConfig(
+        thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
+    ),
 )

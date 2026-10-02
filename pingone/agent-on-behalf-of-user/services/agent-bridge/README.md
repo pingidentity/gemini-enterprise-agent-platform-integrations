@@ -34,6 +34,7 @@ cp .env.sample .env
 | `GC_CLOUD_RUN_SERVICE_NAME` | Cloud Run service name, e.g. `aobou-agent-bridge` |
 | `IDP_ISSUER` | PingOne issuer base, e.g. `https://auth.pingone.<region>/<env-id>/as` |
 | `CORS_ORIGIN` | Chat UI Cloud Run URL |
+| `IDP_REQUIRED_AUDIENCE` | Required Audience for this resource |
 | `AGENT_ENGINE_ID` | The Financial Agent's Reasoning Engine ID |
 
 ## Deploy

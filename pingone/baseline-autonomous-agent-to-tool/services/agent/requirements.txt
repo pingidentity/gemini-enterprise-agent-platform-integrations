@@ -1,4 +1,5 @@
-google-cloud-aiplatform[agent_engines,adk]==1.165.1
+google-cloud-agentplatform[adk]==2.3.0
+google-cloud-aiplatform==2.3.0
 google-adk[a2a]==2.7.1
 mcp>=1.24,<2
 httpx

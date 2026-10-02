@@ -1,47 +1,24 @@
-"""Deploy the AOBOU ADK agent to Agent Runtime, bound to the Agent Gateway.
-
-Pipeline: preflight (config + live PingOne token mint) → engine create →
-egress grant → postdeploy (gateway binding + iap.egressor verified from IAM).
-Failures print a one-screen diagnosis and exit non-zero — no raw tracebacks
-for expected failure modes.
+"""
+Deploy the AOBOU ADK agent to Agent Runtime, bound to the Agent Gateway.
 """
 
 import json
 import os
 import subprocess
-import sys
 import time
-import warnings
-
-# The ADK PLUGGABLE_AUTH experimental flag fires a UserWarning on import;
-# it's expected and would otherwise pollute the deploy output.
-warnings.filterwarnings("ignore", message=r".*\[EXPERIMENTAL\].*")
-
 import httpx
-from google.genai.errors import ClientError
-
 import agentplatform
-from agentplatform import agent_engines, types
+from google.genai.errors import ClientError
+from agentplatform import types
+from agentplatform.frameworks import AdkApp
 from google.cloud import storage
 
-# Derive the project ID before config import: gcloud is the source of truth
-# on the deploy host, and `projects describe` normalizes a configured project
-# number into the canonical string form (the form every resource reference
-# here requires). Set GC_PROJECT_ID to override.
 if not os.environ.get("GC_PROJECT_ID"):
     raw = subprocess.run(
         ["gcloud", "config", "get-value", "project"], capture_output=True, text=True
     ).stdout.strip()
     if not raw:
-        raise SystemExit(
-            "GC_PROJECT_ID not set and gcloud has no active project — "
-            "run `gcloud config set project <id>` or set GC_PROJECT_ID in .env"
-        )
-    if raw.isdigit():
-        raw = subprocess.run(
-            ["gcloud", "projects", "describe", raw, "--format=value(projectId)"],
-            capture_output=True, text=True,
-        ).stdout.strip()
+        raise SystemExit("no active gcloud project — run gcloud config set project <id>")
     os.environ["GC_PROJECT_ID"] = raw
 
 from agent import root_agent
@@ -57,6 +34,18 @@ from config import (
     TOOL_MCP_URL,
     TOOL_SCOPE,
 )
+import gcp_helpers
+from gcp_helpers import (
+    delete_engine,
+    die,
+    engine_url,
+    find_gateway_binding,
+    gcloud,
+    header,
+    list_engines,
+    ok,
+    org_id,
+)
 
 # The gateway is configured by bare name; the full resource path is built here
 # so the project-ID-string form is guaranteed by construction.
@@ -64,28 +53,7 @@ GATEWAY_RESOURCE = (
     f"projects/{GC_PROJECT_ID}/locations/{GC_REGION}/agentGateways/{GC_AGENT_GATEWAY}"
 )
 
-LINE = "─" * 64
-
-
-def header(title: str) -> None:
-    print(f"\n{LINE}\n  {title}\n{LINE}")
-
-
-def ok(msg: str) -> None:
-    print(f"  ✔ {msg}")
-
-
-def die(msg: str, hint: str | None = None) -> None:
-    print(f"\n  ✗ DEPLOY FAILED — {msg}")
-    if hint:
-        print(f"\n{hint}")
-    sys.exit(1)
-
-
-def _gcloud(*args: str) -> str:
-    return subprocess.run(
-        ["gcloud", *args], capture_output=True, text=True, check=True
-    ).stdout.strip()
+_DEPLOY_T0 = time.monotonic()
 
 
 def preflight() -> None:
@@ -149,44 +117,20 @@ def staging_bucket() -> str:
     return f"gs://{name}"
 
 
-def _org_id() -> str:
-    out = _gcloud("projects", "get-ancestors", GC_PROJECT_ID,
-                  "--format=value(id,type)")
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[1] == "organization":
-            return parts[0]
-    die(f"no organization found for project {GC_PROJECT_ID}")
-
-
-def _engine_url(engine_id: str) -> str:
-    return (f"https://aiplatform.googleapis.com/v1/projects/{GC_PROJECT_ID}"
-            f"/locations/{GC_REGION}/reasoningEngines/{engine_id}")
-
-
-def _delete_engine(engine_id: str) -> None:
-    subprocess.run(
-        ["curl", "-s", "-o", "/dev/null", "-X", "DELETE",
-         "-H", f"Authorization: Bearer {_gcloud('auth', 'print-access-token')}",
-         f"{_engine_url(engine_id)}?force=true"],
-        capture_output=True, text=True, check=True,
-    )
-
-
 def cleanup_stale_engines() -> None:
     """Delete engines sharing our display name. A redeploy replaces them by
     definition; without this, every failed post-check orphans an engine and
     the next deploy trips over it."""
-    stale = [e for e in _list_engines() if e.get("displayName") == AGENT_DISPLAY_NAME]
+    stale = [e for e in list_engines() if e.get("displayName") == AGENT_DISPLAY_NAME]
     for e in stale:
         engine_id = e["name"].rsplit("/", 1)[-1]
         print(f"  · deleting stale engine {engine_id} …")
-        _delete_engine(engine_id)
+        delete_engine(engine_id)
     if stale:
         # List is eventually consistent — poll until the deletions land so
         # the create below starts from a clean slate.
         for _ in range(20):
-            if not [e for e in _list_engines() if e.get("displayName") == AGENT_DISPLAY_NAME]:
+            if not [e for e in list_engines() if e.get("displayName") == AGENT_DISPLAY_NAME]:
                 return
             time.sleep(3)
         die("stale engines did not delete in time — check console")
@@ -197,8 +141,7 @@ def create_engine() -> str:
     print(f"  · creating agent engine {AGENT_DISPLAY_NAME!r} in {GC_REGION} …")
     print(f"  · this takes 3–5 minutes (build, deploy, health-check) …")
     client = agentplatform.Client(project=GC_PROJECT_ID, location=GC_REGION)
-    app = agent_engines.AdkApp(agent=root_agent)
-    started = time.monotonic()
+    app = AdkApp(agent=root_agent)
 
     env_vars = {
         # Everything config.py requires at engine-startup import time (it
@@ -217,7 +160,7 @@ def create_engine() -> str:
     }
     config = {
         "requirements": "requirements.txt",
-        "extra_packages": ["config.py", "pingone.py"],
+        "extra_packages": ["config.py", "auth.py", "pingone.py"],
         "staging_bucket": staging_bucket(),
         "display_name": AGENT_DISPLAY_NAME,
         "identity_type": types.IdentityType.AGENT_IDENTITY,
@@ -228,7 +171,7 @@ def create_engine() -> str:
     remote_agent = None
     for attempt in range(1, 11):
         try:
-            remote_agent = client.agent_engines.create(agent=app, config=config)
+            remote_agent = client.runtimes.create(agent=app, config=config)
             break
         except ClientError as e:
             msg = str(e)
@@ -259,7 +202,7 @@ def grant_egress(resource_name: str) -> None:
     # resource_name: projects/<project_number>/locations/<region>/reasoningEngines/<engine_id>
     parts = resource_name.split("/")
     principal = (
-        f"principal://agents.global.org-{_org_id()}.system.id.goog"
+        f"principal://agents.global.org-{org_id()}.system.id.goog"
         f"/resources/aiplatform/projects/{parts[1]}"
         f"/locations/{GC_REGION}/reasoningEngines/{parts[-1]}"
     )
@@ -282,8 +225,8 @@ def postdeploy(resource_name: str) -> None:
     # 1. The engine this deploy created is fetchable by ID (not a name-count
     #    check — the list is eventually consistent, ghosts must not fail us).
     got = subprocess.run(
-        ["curl", "-s", "-f", "-H", f"Authorization: Bearer {_gcloud('auth', 'print-access-token')}",
-         _engine_url(engine_id)],
+        ["curl", "-s", "-f", "-H", f"Authorization: Bearer {gcloud('auth', 'print-access-token')}",
+         engine_url(engine_id)],
         capture_output=True, text=True,
     )
     if got.returncode != 0:
@@ -294,7 +237,7 @@ def postdeploy(resource_name: str) -> None:
     ok(f"engine {engine_id} is live")
 
     # 2. The engine carries the expected gateway binding.
-    gateway = _find_gateway_binding(engine)
+    gateway = find_gateway_binding(engine)
     if gateway is None:
         die("engine spec shows no gateway binding",
             "The engine was created without agentGatewayConfig — check the\n"
@@ -304,14 +247,14 @@ def postdeploy(resource_name: str) -> None:
     ok(f"gateway binding: {GC_AGENT_GATEWAY}")
 
     # 3. The engine's agent principal holds roles/iap.egressor.
-    project_number = _gcloud("projects", "describe", GC_PROJECT_ID,
+    project_number = gcloud("projects", "describe", GC_PROJECT_ID,
                              "--format=value(projectNumber)")
     principal = (
-        f"principal://agents.global.org-{_org_id()}.system.id.goog"
+        f"principal://agents.global.org-{org_id()}.system.id.goog"
         f"/resources/aiplatform/projects/{project_number}"
         f"/locations/{GC_REGION}/reasoningEngines/{engine_id}"
     )
-    policy = json.loads(_gcloud(
+    policy = json.loads(gcloud(
         "alpha", "iap", "web", "get-iam-policy",
         "--resource-type=agent-registry", f"--region={GC_REGION}",
         f"--project={GC_PROJECT_ID}", "--format=json",
@@ -329,35 +272,15 @@ def postdeploy(resource_name: str) -> None:
 
     elapsed = time.monotonic() - _DEPLOY_T0
     print(f"""
-{LINE}
+{gcp_helpers.LINE}
   ✔ DEPLOY COMPLETE — {AGENT_DISPLAY_NAME}  ({elapsed:.0f}s)
-{LINE}
+{gcp_helpers.LINE}
     engine:   {resource_name}
     gateway:  {GC_AGENT_GATEWAY}  (egress live after ~3 min propagation)
-{LINE}""")
-
-
-def _list_engines() -> list:
-    out = subprocess.run(
-        ["curl", "-s", "-H", f"Authorization: Bearer {_gcloud('auth', 'print-access-token')}",
-         f"https://aiplatform.googleapis.com/v1/projects/{GC_PROJECT_ID}/locations/{GC_REGION}/reasoningEngines"],
-        capture_output=True, text=True, check=True,
-    ).stdout
-    return json.loads(out).get("reasoningEngines", [])
-
-
-def _find_gateway_binding(engine: dict) -> str | None:
-    return (
-        engine.get("spec", {})
-        .get("deploymentSpec", {})
-        .get("agentGatewayConfig", {})
-        .get("agentToAnywhereConfig", {})
-        .get("agentGateway")
-    )
+{gcp_helpers.LINE}""")
 
 
 if __name__ == "__main__":
-    _DEPLOY_T0 = time.monotonic()
     try:
         preflight()
         cleanup_stale_engines()

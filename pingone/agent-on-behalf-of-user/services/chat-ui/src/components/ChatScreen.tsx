@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { logout, getAccessToken, getUserInfo } from '../auth/oidc';
 import { invokeAgent } from '../api/agent';
-import ArchitectureModal from './ArchitectureModal';
-import TokenModal from './TokenModal';
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'agent' | 'error';
@@ -14,24 +13,20 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showArch, setShowArch] = useState(false);
-  const [showTokens, setShowTokens] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const userInfo = getUserInfo();
-  const displayName = userInfo?.email ?? userInfo?.name ?? 'User';
+  const displayName =
+    userInfo?.email ??
+    userInfo?.name ??
+    (typeof userInfo?.preferred_username === 'string' ? userInfo.preferred_username : undefined) ??
+    (typeof userInfo?.given_name === 'string' ? userInfo.given_name : undefined) ??
+    userInfo?.sub ??
+    'User';
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setShowArch(false); setShowTokens(false); }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
 
   const addMessage = useCallback((role: ChatMessage['role'], content: string) => {
     setMessages((prev) => [
@@ -73,8 +68,6 @@ export default function ChatScreen() {
 
   return (
     <div className="min-h-screen flex flex-col bg-bg-primary text-white relative">
-      {showArch && <ArchitectureModal onClose={() => setShowArch(false)} />}
-      {showTokens && <TokenModal onClose={() => setShowTokens(false)} />}
       {/* Header */}
       <header className="px-4 py-6 md:p-4 border-b-2 border-border bg-bg-secondary sticky top-0 z-50">
         <div className="max-w-[1200px] mx-auto flex justify-between items-center">
@@ -85,9 +78,6 @@ export default function ChatScreen() {
           </div>
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs text-text-secondary hidden sm:block">{displayName}</span>
-            <button className={btnStyle} onClick={() => setShowArch(true)} title="Architecture">Arch</button>
-            <button className={btnStyle} onClick={() => setShowTokens(true)} title="Token chain">Tokens</button>
-            <button className={btnStyle} onClick={() => setMessages([])}>Clear</button>
             <button className={btnStyle} onClick={logout}>Logout</button>
           </div>
         </div>
@@ -169,7 +159,7 @@ export default function ChatScreen() {
         </form>
         <div className="max-w-[1200px] mx-auto font-mono text-[0.7rem] text-text-secondary text-center flex items-center justify-center gap-2 uppercase tracking-wide">
           <span className="w-1.5 h-1.5 rounded-full bg-ping-red animate-[dot-pulse_2s_ease-in-out_infinite]" />
-          <span>Powered by PingOne AIC, PingAuthorize, Google ADK, Agent Gateway, and Stripe MCP</span>
+          <span>Powered by PingOne, PingOne Authorize, Google ADK, Agent Gateway, and Stripe MCP</span>
         </div>
       </footer>
     </div>

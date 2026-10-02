@@ -1,8 +1,8 @@
-"""The CRM agent: an ADK agent that restocks inventory through the supply-chain MCP tool.
+"""
+The CRM agent: an ADK agent that restocks inventory through the supply-chain MCP tool.
 
-Every MCP request carries the agent's own PingOne token (via `pingone.py`), which
-the Agent Gateway's extension service validates, authorizes, and exchanges for a
-tool-scoped token before the request reaches the tool.
+Every MCP request carries the agent's own PingOne token, which the Agent Gateway's extension service
+validates, authorizes, and exchanges for a tool-scoped token before the request reaches the tool.
 """
 
 from google.adk.agents import Agent
@@ -18,7 +18,7 @@ restock_tool = McpToolset(
     header_provider=mcp_headers,
 )
 
-# root_agent is the name ADK's deploy surface looks for — do not rename.
+
 root_agent = Agent(
     model="gemini-2.5-flash",
     name="baatt_crm_agent",

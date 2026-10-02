@@ -1,18 +1,19 @@
-"""Exchanges the user's login token for a delegated token and attaches it to every MCP request.
+"""
+Exchanges the user's login token for a delegated token and attaches it to every MCP request.
 
 The bridge stores the user's PingOne token in ADK session state under
 "user_token". On each request this module swaps it via RFC 8693 — the user's
 token as subject, the agent's own client_credentials token as actor — producing
 a delegated token (sub=user, act.sub=agent). The gateway's extension service
 validates it, asks PingOne Authorize, and exchanges it again for a tool-scoped
-token before the request reaches the Stripe MCP server. The delegated token is
-cached per user (30s before expiry, guarded by a lock for concurrent requests).
+token before the request reaches the Stripe MCP server.
 """
 
 import logging
 import threading
 import time
 import httpx
+from auth import validate_user_token
 from config import AGENT_CLIENT_ID, AGENT_CLIENT_SECRET, TOKEN_ENDPOINT, TOOL_SCOPE
 
 _lock = threading.Lock()
@@ -44,6 +45,9 @@ def _get_actor_token() -> str:
 
 def _exchange(user_token: str) -> tuple[str, int]:
     """RFC 8693: exchange user token (subject) + agent token (actor) -> delegated token."""
+    # Independent re-check before the token is spent (the bridge validated it
+    # at the front door) — see auth.py.
+    validate_user_token(user_token)
     actor = _get_actor_token()
     resp = httpx.post(
         TOKEN_ENDPOINT,

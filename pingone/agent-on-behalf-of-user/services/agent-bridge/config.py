@@ -1,39 +1,30 @@
 import os
 import httpx
+import google.auth
+import google.auth.transport.requests
+from typing import Any
 from dotenv import load_dotenv
 
-
 load_dotenv()
-# The project ID is derived, not configured: the bridge always runs inside its
-# own project, and google.auth resolves it from the Cloud Run metadata server.
-# GC_PROJECT_ID remains as an override for local debugging.
-import google.auth
 
-GC_PROJECT_ID = os.environ.get("GC_PROJECT_ID") or google.auth.default()[1]
+GC_PROJECT_ID = google.auth.default()[1]
+if not GC_PROJECT_ID:
+    raise RuntimeError("could not resolve the GCP project ID from Application Default Credentials")
 GC_REGION = os.environ["GC_REGION"]
 CORS_ORIGIN = os.environ["CORS_ORIGIN"]
 IDP_ISSUER = os.environ["IDP_ISSUER"].rstrip("/")
+IDP_REQUIRED_AUDIENCE = os.environ["IDP_REQUIRED_AUDIENCE"]
 JWKS_URI = f"{IDP_ISSUER}/jwks"
-
-_project_number_cache = ""
+_project_number_cache: str = ""
 
 
 def _project_number(project_id: str) -> str:
-    """Resolve the numeric project number for GC_PROJECT_ID via Cloud Resource Manager.
-
-    Uses the bridge's own Application Default Credentials (Cloud Run service
-    account), which can always read its own project's metadata. Cached for the
-    process lifetime.
-    """
+    """Resolve the numeric project number via Cloud Resource Manager (ADC-authed, cached)."""
     global _project_number_cache
     if _project_number_cache:
         return _project_number_cache
-    import google.auth
-    import google.auth.transport.requests as _requests
-
     creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    auth_req = _requests.Request()
-    creds.refresh(auth_req)
+    creds.refresh(google.auth.transport.requests.Request())
     resp = httpx.get(
         "https://cloudresourcemanager.googleapis.com/v1/projects",
         params={"filter": f"projectId:{project_id}"},
@@ -41,7 +32,8 @@ def _project_number(project_id: str) -> str:
         timeout=10,
     )
     resp.raise_for_status()
-    for proj in resp.json().get("projects", []):
+    projects: list[dict[str, Any]] = resp.json().get("projects", [])
+    for proj in projects:
         if proj.get("projectId") == project_id:
             _project_number_cache = proj["projectNumber"]
             return _project_number_cache
