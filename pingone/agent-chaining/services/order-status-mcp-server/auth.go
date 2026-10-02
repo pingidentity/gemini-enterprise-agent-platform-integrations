@@ -1,6 +1,4 @@
-// Token validation — the security boundary of this service. The gateway
-// injects a scoped PingOne access token; this middleware independently verifies
-// signature, issuer, audience, expiry, and scope before any MCP handler runs.
+// Token validation — the security boundary of this service.
 package main
 
 import (
@@ -135,15 +133,6 @@ func hasScope(tok jwt.Token, want string) bool {
 	if raw, ok := tok.Get("scope"); ok {
 		if s, ok := raw.(string); ok && slices.Contains(strings.Fields(s), want) {
 			return true
-		}
-	}
-	if raw, ok := tok.Get("scp"); ok {
-		if arr, ok := raw.([]any); ok {
-			for _, item := range arr {
-				if s, ok := item.(string); ok && s == want {
-					return true
-				}
-			}
 		}
 	}
 	return false
