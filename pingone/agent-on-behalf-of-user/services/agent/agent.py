@@ -11,7 +11,7 @@ from google.adk.agents import Agent
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 from google.genai import types as genai_types
-from config import TOOL_MCP_URL
+from config import AGENT_DISPLAY_NAME, TOOL_MCP_URL
 from pingone import mcp_headers
 
 
@@ -23,7 +23,7 @@ stripe_tool = McpToolset(
 
 root_agent = Agent(
     model="gemini-2.5-flash",
-    name="aobou_financial_agent",
+    name=AGENT_DISPLAY_NAME,
     description="Financial agent that purchases Stripe products on behalf of an authenticated user.",
     instruction=(
         "You are a financial agent acting on behalf of an authenticated user. "

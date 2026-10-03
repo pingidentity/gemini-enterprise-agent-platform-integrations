@@ -24,7 +24,7 @@ interface IdTokenClaims {
   [key: string]: unknown;
 }
 
-const AIC_ISSUER = import.meta.env.VITE_AIC_ISSUER as string;
+const AIC_ISSUER = import.meta.env.VITE_IDP_ISSUER as string;
 const CLIENT_ID = import.meta.env.VITE_CLIENT_ID as string;
 const REDIRECT_URI = import.meta.env.VITE_REDIRECT_URI as string;
 const SCOPES = (import.meta.env.VITE_SCOPES as string) || 'openid profile email support-agent:invoke';

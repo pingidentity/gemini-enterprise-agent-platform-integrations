@@ -17,7 +17,7 @@ func registerOrderStatusTool(s *server.MCPServer) {
 	)
 	handler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		orderID, err := request.RequireString("order_id")
-		if err != nil || !validOrderID(orderID) {
+		if err != nil || !orderIDPattern.MatchString(orderID) {
 			return mcp.NewToolResultError("order_id must match ORD-[0-9]+"), nil
 		}
 		orders := map[string][2]string{

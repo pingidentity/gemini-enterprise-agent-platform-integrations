@@ -1,11 +1,12 @@
-"""Native Agent Runtime A2A Order Status Agent."""
+"""
+The order status agent: a native A2A agent (a2a-sdk executor, no ADK loop)
+that owns order lookups. Validates the Support Agent's delegated PingOne
+token, exchanges it for an MCP-scoped token, and queries the Order Status
+MCP server. Auth never reaches the model — the executor enforces it.
+"""
 
-from __future__ import annotations
-
-import base64
 import json
 import os
-import time
 from typing import Any
 from uuid import uuid4
 
@@ -14,72 +15,11 @@ from a2a.helpers.proto_helpers import new_text_message
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events.event_queue_v2 import EventQueue
 from a2a.types import AgentSkill
-from jose import JWTError, jwk, jwt
-from agentplatform.agent_engines.templates.a2a import A2aAgent, create_agent_card
+from agentplatform.frameworks.a2a import A2aAgent, create_agent_card
 
+from auth import act_chain, validate_inbound_token
+from config import TOOL_URL, AGENT_DISPLAY_NAME
 from pingone import exchange_for_mcp
-
-TOOL_URL = os.environ["TOOL_URL"]
-EXPECTED_AUDIENCE = os.environ.get("IDP_REQUIRED_AUDIENCE", "order-status-agent")
-EXPECTED_SCOPE = os.environ.get("IDP_REQUIRED_SCOPE", "order-status:invoke")
-ISSUER = os.environ["IDP_ISSUER"].rstrip("/")
-TOKEN_ENDPOINT = f"{ISSUER}/token"
-JWKS_URL = f"{ISSUER}/jwks"
-
-_jwks: dict[str, Any] | None = None
-
-
-def _jwks_keys() -> dict[str, Any]:
-    global _jwks
-    if _jwks is None:
-        response = httpx.get(JWKS_URL, timeout=10)
-        response.raise_for_status()
-        _jwks = response.json()
-    return _jwks
-
-
-def _validate_inbound_token(token: str) -> dict[str, Any]:
-    """Validate the Support Agent delegation before using it as a subject token."""
-    if not token:
-        raise ValueError("a signed PingOne delegated token is required")
-    try:
-        header = jwt.get_unverified_header(token)
-        key_data = next(
-            key for key in _jwks_keys().get("keys", []) if key.get("kid") == header.get("kid")
-        )
-        algorithm = header.get("alg") or ("ES256" if key_data.get("kty") == "EC" else "RS256")
-        claims = jwt.decode(
-            token,
-            jwk.construct(key_data, algorithm=algorithm),
-            algorithms=[algorithm],
-            issuer=ISSUER,
-            audience=EXPECTED_AUDIENCE,
-        )
-    except (JWTError, StopIteration, KeyError, ValueError) as exc:
-        raise ValueError("invalid inbound delegated token") from exc
-
-    if not claims.get("sub"):
-        raise ValueError("inbound delegated token is missing sub")
-    scopes = set(str(claims.get("scope", "")).split())
-    if EXPECTED_SCOPE not in scopes:
-        raise ValueError("inbound delegated token scope mismatch")
-    # Log the verified delegation: who the call is for (sub, the user
-    # throughout), which audience it was minted for (aud), who acted for it
-    # (act — the chain of agents that touched this token), and the scope.
-    act = claims.get("act") or {}
-    act_parts = []
-    while isinstance(act, dict) and act.get("sub"):
-        act_parts.append(act["sub"])
-        act = act.get("act")
-    print(
-        "[OrderStatusAgent] Delegated token verified — sub={} aud={} act={}"
-        " scope=\"{}\"".format(
-            claims["sub"], claims.get("aud"), " -> ".join(act_parts) or "<none>",
-            claims.get("scope", ""),
-        ),
-        flush=True,
-    )
-    return claims
 
 
 def _order_id_from_message(context: RequestContext) -> str:
@@ -130,7 +70,17 @@ class OrderStatusExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         order_id = _order_id_from_message(context)
         inbound_token = _authorization_token(context)
-        claims = _validate_inbound_token(inbound_token)
+        claims = validate_inbound_token(inbound_token)
+        # Log the verified delegation: who the call is for (sub, the user
+        # throughout), which audience it was minted for (aud), who acted for
+        # it (act — the chain of agents that touched this token), and scope.
+        print(
+            "[OrderStatusAgent] Delegated token verified — sub={} aud={} act={}"
+            " scope=\"{}\"".format(
+                claims["sub"], claims.get("aud"), act_chain(claims), claims.get("scope", ""),
+            ),
+            flush=True,
+        )
         result = _call_order_mcp(order_id, inbound_token)
         print("[OrderStatusAgent] get_order_status complete order_id={} status={}".format(
             order_id, result.get("result", {}).get("structuredContent", {}).get("status", "<unknown>")
@@ -150,7 +100,7 @@ skill = AgentSkill(
 )
 
 agent_card = create_agent_card(
-    agent_name="Order Status Agent",
+    agent_name=AGENT_DISPLAY_NAME,
     description="Specialized agent that retrieves order status through a protected MCP server.",
     skills=[skill],
     default_input_modes=["text/plain"],

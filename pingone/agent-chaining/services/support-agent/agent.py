@@ -1,10 +1,14 @@
-"""Support Agent — delegates order questions to the native Order Status A2A agent."""
+"""
+The support agent: an ADK agent that delegates order questions to the Order
+Status Agent over native A2A, carrying the user's delegated PingOne token.
 
-from __future__ import annotations
+The A2A hop is dual-auth: Authorization carries a Google credential (checked
+by Google's IAM, independent of this agent), and the delegated PingOne token
+rides in the message metadata.
+"""
 
 import json
 import os
-from typing import Any
 from uuid import uuid4
 
 import httpx
@@ -12,60 +16,20 @@ from google.adk.agents import Agent
 from google.adk.tools import FunctionTool
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types as genai_types
-from jose import JWTError, jwk, jwt
 
+from auth import validate_inbound_token
+from config import AGENT_DISPLAY_NAME, AGENT_ENGINE_ID, GC_PROJECT_ID, GC_REGION
 from pingone import get_delegated_token
 
-ORDER_STATUS_AGENT_URL = os.environ["A2A_ORDER_STATUS_AGENT_URL"]
 
-# Inbound validation of the browser's own PKCE login token — audienced to
-# this agent's own PingOne resource (see CLAUDE.md's PingOne setup section).
-# Agent Bridge already validates this token before storing it in session
-# state; this is an independent re-check, matching the defense-in-depth
-# pattern every other hop in this journey uses (the extension validates,
-# then the target it forwards to validates again).
-EXPECTED_AUDIENCE = os.environ.get("SUPPORT_AGENT_AUDIENCE", "support-agent")
-EXPECTED_SCOPE = os.environ.get("SUPPORT_AGENT_EXPECTED_SCOPE", "support-agent:invoke")
-ISSUER = os.environ.get("AGENT_IDP_TOKEN_ENDPOINT", "").removesuffix("/token").rstrip("/")
-JWKS_URL = f"{ISSUER}/jwks" if ISSUER else ""
+if os.environ.get("GOOGLE_CLOUD_PROJECT", "").isdigit() and os.environ.get("GC_PROJECT_ID"):
+    os.environ["GOOGLE_CLOUD_PROJECT"] = os.environ["GC_PROJECT_ID"]
 
-_jwks: dict[str, Any] | None = None
-
-
-def _jwks_keys() -> dict[str, Any]:
-    global _jwks
-    if _jwks is None:
-        response = httpx.get(JWKS_URL, timeout=10)
-        response.raise_for_status()
-        _jwks = response.json()
-    return _jwks
-
-
-def _validate_user_token(token: str) -> dict[str, Any]:
-    """Validate the browser's PingOne login token before using it as a subject token."""
-    if not token:
-        raise ValueError("user token is required")
-    try:
-        header = jwt.get_unverified_header(token)
-        key_data = next(
-            key for key in _jwks_keys().get("keys", []) if key.get("kid") == header.get("kid")
-        )
-        algorithm = header.get("alg") or ("ES256" if key_data.get("kty") == "EC" else "RS256")
-        claims = jwt.decode(
-            token,
-            jwk.construct(key_data, algorithm=algorithm),
-            algorithms=[algorithm],
-            issuer=ISSUER,
-            audience=EXPECTED_AUDIENCE,
-        )
-    except (JWTError, StopIteration, KeyError, ValueError) as exc:
-        raise ValueError("invalid user token") from exc
-    if not claims.get("sub"):
-        raise ValueError("user token is missing sub")
-    scopes = set(str(claims.get("scope", "")).split())
-    if EXPECTED_SCOPE not in scopes:
-        raise ValueError("user token scope mismatch")
-    return claims
+AGENT_URL = (
+    f"https://{GC_REGION}-aiplatform.mtls.googleapis.com/v1beta1"
+    f"/projects/{GC_PROJECT_ID}/locations/{GC_REGION}"
+    f"/reasoningEngines/{AGENT_ENGINE_ID}/a2a"
+)
 
 
 def get_order_status(order_id: str, tool_context: ToolContext) -> dict:
@@ -80,7 +44,7 @@ def get_order_status(order_id: str, tool_context: ToolContext) -> dict:
         }
 
     try:
-        _validate_user_token(user_token)
+        validate_inbound_token(user_token)
     except ValueError as exc:
         print(f"[support-agent] inbound token rejected: {exc}", flush=True)
         return {"error": f"unauthorized: {exc}"}
@@ -89,7 +53,7 @@ def get_order_status(order_id: str, tool_context: ToolContext) -> dict:
         delegated = get_delegated_token(user_token)
         request_id = str(uuid4())
         response = httpx.post(
-            f"{ORDER_STATUS_AGENT_URL}/message:send",
+            f"{AGENT_URL}/message:send",
             json={
                 "message": {
                     "messageId": request_id,
@@ -121,7 +85,7 @@ def get_order_status(order_id: str, tool_context: ToolContext) -> dict:
 
 root_agent = Agent(
     model="gemini-2.5-flash",
-    name="support_agent",
+    name=AGENT_DISPLAY_NAME,
     description="Support agent that delegates order-status requests to a specialized agent.",
     instruction=(
         "You are a customer support agent. When a user asks about an order, extract the order ID and call get_order_status. "
@@ -130,9 +94,6 @@ root_agent = Agent(
         "Report the result clearly. Do not access order data directly; the Order Status Agent owns that capability."
     ),
     tools=[FunctionTool(get_order_status)],
-    # Thinking (thought_signature) on function-call turns intermittently
-    # crashed the deployed engine's VertexAiSessionService persistence with
-    # zero events returned to the client. Disabled to keep tool calls reliable.
     generate_content_config=genai_types.GenerateContentConfig(
         thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
     ),

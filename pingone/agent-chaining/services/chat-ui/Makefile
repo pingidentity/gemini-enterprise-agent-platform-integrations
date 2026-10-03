@@ -5,11 +5,12 @@ PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 SERVICE    := $(GC_CLOUD_RUN_SERVICE_NAME)
 IMAGE      := gcr.io/$(PROJECT_ID)/$(SERVICE):latest
 
-.PHONY: build push deploy require-env
+.PHONY: build push deploy destroy clean require-env
 
 require-env:
-	@test -n "$(GC_REGION)"                 || { echo "GC_REGION not set"; exit 1; }
-	@test -n "$(GC_CLOUD_RUN_SERVICE_NAME)" || { echo "GC_CLOUD_RUN_SERVICE_NAME not set"; exit 1; }
+	@gcloud auth list --filter="status:ACTIVE" --format="value(account)" 2>/dev/null | grep -q . || { echo "FAIL auth     no active gcloud account — run gcloud auth login"; exit 1; }
+	@test -n "$(GC_REGION)"                 || { echo "GC_REGION not set — fill in .env (copy from .env.sample)"; exit 1; }
+	@test -n "$(GC_CLOUD_RUN_SERVICE_NAME)" || { echo "GC_CLOUD_RUN_SERVICE_NAME not set — fill in .env (copy from .env.sample)"; exit 1; }
 
 build: require-env
 	npm install
@@ -24,3 +25,17 @@ deploy: push
 		--image $(IMAGE) \
 		--region $(GC_REGION) \
 		--allow-unauthenticated --no-invoker-iam-check
+
+destroy:
+	@echo "destroy $(SERVICE)"
+	@if gcloud run services describe $(SERVICE) --project $(PROJECT_ID) --region $(GC_REGION) >/dev/null 2>&1; then \
+		gcloud run services delete $(SERVICE) --project $(PROJECT_ID) --region $(GC_REGION) --quiet >/dev/null \
+			&& echo "PASS service  deleted" || { echo "FAIL service  delete"; exit 1; }; \
+	else echo "SKIP service  (not found)"; fi
+	@if digest=$$(gcloud container images describe $(IMAGE) --format='value(image_summary.fullyQualifiedDigest)' 2>/dev/null); then \
+		gcloud container images delete $$digest --quiet --force-delete-tags >/dev/null 2>&1 \
+			&& echo "PASS image    deleted" || { echo "FAIL image    delete"; exit 1; }; \
+	else echo "SKIP image    (not found)"; fi
+
+clean:
+	rm -rf dist

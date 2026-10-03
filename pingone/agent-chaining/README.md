@@ -213,7 +213,7 @@ Follow [agent-gateway-extension-service](services/agent-gateway-extension-servic
 Create the gateway and attach the extension service and authz policy from `services/agent-gateway/` (`make attach`) — this must happen **before** either Agent Runtime engine deploys, since each engine's `deploy.py` binds its egress to `GC_AGENT_GATEWAY` by resource name.
 
 ### 4. Order Status Agent
-Follow [order-status-agent](services/order-status-agent/README.md) to deploy the native A2A Reasoning Engine. Update the extension's `A2A_TARGET_URL` with the resulting engine ID and redeploy the extension.
+Follow [order-status-agent](services/order-status-agent/README.md) to deploy the native A2A Reasoning Engine. Update the extension's `AGENT_ENGINE_ID` with the resulting engine ID and redeploy the extension.
 
 ### 5. Support Agent
 Follow [support-agent](services/support-agent/README.md) to deploy the second Reasoning Engine, bound to the same gateway. Needs Order Status Agent's A2A URL from step 4.
@@ -238,16 +238,15 @@ The agent replies with the order's status (`ORD-123` → shipped, `ORD-456` → 
 # Extension service (A2A hop): the Support Agent's delegated token is validated
 # against the shared gateway audience, reminted for the Order Status Agent, and
 # injected alongside the Google credential the A2A endpoint's IAM check requires.
-[ExtSvc] onHeaders authority="us-central1-aiplatform.mtls.googleapis.com" path=".../reasoningEngines/<order-status-agent-id>/a2a/message:send" matched=true
+[ExtSvc] request authority="us-central1-aiplatform.mtls.googleapis.com" path=".../reasoningEngines/<order-status-agent-id>/a2a/message:send" governed=true
 [ExtSvc] delegated token minted target=A2A ttl=59m30s
-[ExtSvc] validated delegated token — sub=<user-sub> aud=ac-google-cloud-agent-gateway scope="order-status:invoke"
-[ExtSvc] injecting Google credential + reminted token (aud=order-status-agent scope=order-status:invoke) for A2A
+[ExtSvc] validated delegated token — user=<user-sub>
+[ExtSvc] injecting a2a token for A2A
 
 # Extension service: PingOne Authorize is consulted on every governed action
 # (A2A message:send and MCP tools/call alike).
-[ExtSvc] authorize user=<user-sub> action=get_order_status hour=10
+[ExtSvc] authorize user=<user-sub> action=get_order_status order=ORD-123 hour=10
 [ExtSvc] PingOne Authorize PERMIT user=<user-sub>
-[ExtSvc] PERMIT target=A2A action=get_order_status order=ORD-123 (authz=pingone-authorize)
 
 # Order Status Agent: the gateway-reminted A2A token is validated independently
 # (signature, issuer, audience, scope) before use. The log shows who the call
@@ -263,13 +262,12 @@ The agent replies with the order's status (`ORD-123` → shipped, `ORD-456` → 
 # Extension service (MCP hop): the Order Status Agent's token is validated and
 # reminted for the MCP server; Authorization now carries the PingOne token
 # directly (no Google credential needed on this hop).
-[ExtSvc] onHeaders authority="ac-order-status-mcp-server-...run.app" path="/mcp" matched=true
+[ExtSvc] request authority="ac-order-status-mcp-server-...run.app" path="/mcp" governed=true
 [ExtSvc] delegated token minted target=MCP ttl=59m30s
-[ExtSvc] validated delegated token — sub=<user-sub> aud=ac-google-cloud-agent-gateway scope="order:read"
-[ExtSvc] injecting reminted token (aud=order-status-mcp-server scope=order:read) for MCP
-[ExtSvc] authorize user=<user-sub> action=get_order_status hour=10
+[ExtSvc] validated delegated token — user=<user-sub>
+[ExtSvc] injecting mcp token for MCP
+[ExtSvc] authorize user=<user-sub> action=get_order_status order=ORD-123 hour=10
 [ExtSvc] PingOne Authorize PERMIT user=<user-sub>
-[ExtSvc] PERMIT target=MCP action=get_order_status order=ORD-123 (authz=pingone-authorize)
 
 # Order Status MCP server: every request's token is verified (signature,
 # issuer, audience, scope) before handling. The log shows who the call is for
@@ -282,4 +280,4 @@ The agent replies with the order's status (`ORD-123` → shipped, `ORD-456` → 
 [OrderStatusMCP] tool=get_order_status — caller=<user-sub> order=ORD-123 status=shipped
 ```
 
-Outside the governed path, the extension also logs the engines' own Agent Runtime session calls (`matched=false`) — those pass through untouched; only the `matched=true` lines above are governed hops. A DENY from PingOne Authorize (outside business hours, or a user not in `support_team`) surfaces as `[ExtSvc] DENY target=...` followed by an immediate 403, and the agent tells the user the request was denied.
+Outside the governed path, the extension also logs the engines' own Agent Runtime session calls (`governed=false`) — those pass through untouched; only the `governed=true` lines above are governed hops. A DENY from PingOne Authorize (outside business hours, or a user not in `support_team`) surfaces as `[ExtSvc] PingOne Authorize DENY user=...` followed by an immediate 403, and the agent tells the user the request was denied.

@@ -50,7 +50,7 @@ cp .env.sample .env
 | Variable | Value |
 |---|---|
 | `GC_REGION` | Deploy region, e.g. `us-central1` (the project ID is derived from gcloud at deploy time) |
-| `AGENT_DISPLAY_NAME` | Display name for the Reasoning Engine, e.g. `ac-order-status-agent` |
+| `AGENT_DISPLAY_NAME` | Display name for the Reasoning Engine, e.g. `ac_order_status_agent` |
 | `GC_AGENT_GATEWAY` | Bare gateway name, e.g. `ac-agent-gateway` (the full resource path is built from the derived project ID) |
 | `IDP_REQUIRED_AUDIENCE` | Audience accepted on the inbound A2A token (`order-status-agent`) |
 | `IDP_REQUIRED_SCOPE` | Scope accepted on the inbound A2A token (`order-status:invoke`) |

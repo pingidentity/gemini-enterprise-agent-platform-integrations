@@ -11,14 +11,14 @@ def require_env(name: str) -> str:
 
 GC_PROJECT_ID = require_env("GC_PROJECT_ID")
 GC_REGION = require_env("GC_REGION")
-if os.environ.get("GOOGLE_CLOUD_PROJECT", "").isdigit():
-    os.environ["GOOGLE_CLOUD_PROJECT"] = GC_PROJECT_ID
 GC_AGENT_GATEWAY = require_env("GC_AGENT_GATEWAY")
 AGENT_DISPLAY_NAME = require_env("AGENT_DISPLAY_NAME")
 AGENT_CLIENT_ID = require_env("AGENT_CLIENT_ID")
 AGENT_CLIENT_SECRET = require_env("AGENT_CLIENT_SECRET")
-TOOL_MCP_URL = require_env("TOOL_MCP_URL")
-TOOL_SCOPE = require_env("TOOL_SCOPE")
 IDP_ISSUER = require_env("IDP_ISSUER").rstrip("/")
 TOKEN_ENDPOINT = f"{IDP_ISSUER}/token"
+EXPECTED_AUDIENCE = require_env("IDP_REQUIRED_AUDIENCE")
+EXPECTED_SCOPE = require_env("IDP_REQUIRED_SCOPE")
+AGENT_ENGINE_ID = require_env("AGENT_ENGINE_ID")
+AGENT_SCOPE = require_env("AGENT_SCOPE")
 GATEWAY_AUDIENCE = require_env("GATEWAY_AUDIENCE")

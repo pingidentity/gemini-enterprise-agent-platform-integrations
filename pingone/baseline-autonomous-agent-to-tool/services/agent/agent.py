@@ -9,7 +9,7 @@ from google.adk.agents import Agent
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 from google.genai import types as genai_types
-from config import TOOL_MCP_URL
+from config import AGENT_DISPLAY_NAME, TOOL_MCP_URL
 from pingone import mcp_headers
 
 
@@ -21,7 +21,7 @@ restock_tool = McpToolset(
 
 root_agent = Agent(
     model="gemini-2.5-flash",
-    name="baatt_crm_agent",
+    name=AGENT_DISPLAY_NAME,
     description="CRM agent that restocks inventory via the supply chain MCP tool.",
     instruction=(
         "You are a CRM inventory agent. When asked to restock a product, call "

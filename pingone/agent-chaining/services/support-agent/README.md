@@ -16,7 +16,7 @@ The Agent Bridge stores the user's PingOne login token in ADK session state, aud
 
 **2. Create the agent's PingOne resource**
 
-- **Resource Name / Audience:** `support-agent` (must match `SUPPORT_AGENT_AUDIENCE` exactly — it becomes the `aud` claim on the Chat UI's login token)
+- **Resource Name / Audience:** `support-agent` (must match `IDP_REQUIRED_AUDIENCE` exactly — it becomes the `aud` claim on the Chat UI's login token)
 - **Scope:** `support-agent:invoke`
 - **Attributes:**
   - `may_act` — Advanced Expression:
@@ -40,18 +40,17 @@ cp .env.sample .env
 
 | Variable | Value |
 |---|---|
-| `GC_PROJECT_ID` | Target project ID |
-| `GC_REGION` | Deploy region, e.g. `us-central1` |
-| `AGENT_DISPLAY_NAME` | Display name for the Reasoning Engine, e.g. `ac-support-agent` |
-| `GC_AGENT_GATEWAY` | Full gateway path: `projects/<id>/locations/<region>/agentGateways/<name>` |
-| `A2A_ORDER_STATUS_AGENT_URL` | The Order Status Agent's A2A endpoint: `https://<region>-aiplatform.mtls.googleapis.com/v1beta1/projects/<id>/locations/<region>/reasoningEngines/<engine-id>/a2a` |
-| `A2A_ORDER_STATUS_SCOPE` | Scope requested on the delegated A2A token (`order-status:invoke`) |
-| `SUPPORT_AGENT_AUDIENCE` | Expected `aud` on the inbound browser token (`support-agent`) |
-| `SUPPORT_AGENT_EXPECTED_SCOPE` | Expected scope on the inbound browser token (`support-agent:invoke`) |
-| `AGENT_GATEWAY_AUDIENCE` | Shared intermediate PingOne audience this agent's own exchange targets — must match the gateway extension's config |
-| `AGENT_IDP_TOKEN_ENDPOINT` | PingOne token endpoint, e.g. `https://auth.pingone.<region>/<env-id>/as/token` |
-| `AGENT_IDP_CLIENT_ID` | Agent's PingOne client ID |
-| `AGENT_IDP_CLIENT_SECRET` | Agent's PingOne client secret |
+| `GC_REGION` | Deploy region, e.g. `us-central1` (the project ID is derived from gcloud at deploy time) |
+| `AGENT_DISPLAY_NAME` | Display name for the Reasoning Engine, e.g. `ac_support_agent` |
+| `GC_AGENT_GATEWAY` | Bare gateway name, e.g. `ac-agent-gateway` (the full resource path is built from the derived project ID) |
+| `AGENT_ENGINE_ID` | The Order Status Agent's bare Reasoning Engine ID — the mTLS A2A URL is derived from `GC_PROJECT_ID`/`GC_REGION`/this |
+| `AGENT_SCOPE` | Scope requested on the delegated A2A token (`order-status:invoke`) |
+| `IDP_REQUIRED_AUDIENCE` | Expected `aud` on the inbound browser token (`support-agent`) |
+| `IDP_REQUIRED_SCOPE` | Expected scope on the inbound browser token (`support-agent:invoke`) |
+| `GATEWAY_AUDIENCE` | Shared intermediate PingOne audience this agent's own exchange targets — must match the gateway extension's config |
+| `IDP_ISSUER` | PingOne issuer, e.g. `https://auth.pingone.<region>/<env-id>/as` |
+| `AGENT_CLIENT_ID` | Agent's PingOne client ID |
+| `AGENT_CLIENT_SECRET` | Agent's PingOne client secret |
 
 ## Deploy
 

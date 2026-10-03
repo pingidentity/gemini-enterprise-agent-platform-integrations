@@ -1,128 +1,303 @@
 """Deploy the Order Status Agent to Agent Runtime, bound to the Agent Gateway."""
 
+import json
 import os
 import subprocess
 import time
-
-from google.cloud import storage
-from google.genai.errors import ClientError
-
+import httpx
 import agentplatform
-from agentplatform import agent_engines, types
-from dotenv import load_dotenv
+from google.genai.errors import ClientError
+from agentplatform import types
 
-load_dotenv()
-
-# Derive the project ID before anything consumes it: gcloud is the source of
-# truth on the deploy host, and `projects describe` normalizes a configured
-# project number into the canonical string form (the form every resource
-# reference here requires). Set GC_PROJECT_ID to override.
 if not os.environ.get("GC_PROJECT_ID"):
     raw = subprocess.run(
         ["gcloud", "config", "get-value", "project"], capture_output=True, text=True
     ).stdout.strip()
     if not raw:
-        raise SystemExit(
-            "GC_PROJECT_ID not set and gcloud has no active project — "
-            "run `gcloud config set project <id>` or set GC_PROJECT_ID in .env"
-        )
-    if raw.isdigit():
-        raw = subprocess.run(
-            ["gcloud", "projects", "describe", raw, "--format=value(projectId)"],
-            capture_output=True, text=True,
-        ).stdout.strip()
+        raise SystemExit("no active gcloud project — run gcloud config set project <id>")
     os.environ["GC_PROJECT_ID"] = raw
 
-PROJECT_ID = os.environ["GC_PROJECT_ID"]
-REGION = os.environ["GC_REGION"]
-
-# The gateway is configured by bare name; the full resource path is built here
-# so the project-ID-string form is guaranteed by construction.
-GATEWAY_RESOURCE = (
-    f"projects/{PROJECT_ID}/locations/{REGION}/agentGateways/{os.environ['GC_AGENT_GATEWAY']}"
+from agent import root_agent
+from config import (
+    AGENT_CLIENT_ID,
+    AGENT_CLIENT_SECRET,
+    AGENT_DISPLAY_NAME,
+    EXPECTED_AUDIENCE,
+    EXPECTED_SCOPE,
+    GATEWAY_AUDIENCE,
+    GC_AGENT_GATEWAY,
+    GC_PROJECT_ID,
+    GC_REGION,
+    IDP_ISSUER,
+    TOKEN_ENDPOINT,
+    TOOL_SCOPE,
+    TOOL_URL,
 )
+import gcp_helpers
+from gcp_helpers import (
+    delete_engine,
+    die,
+    engine_url,
+    find_gateway_binding,
+    gcloud,
+    header,
+    list_engines,
+    ok,
+    org_id,
+)
+
+# The gateway is configured by bare name; the full resource path is built here.
+GATEWAY_RESOURCE = (
+    f"projects/{GC_PROJECT_ID}/locations/{GC_REGION}/agentGateways/{GC_AGENT_GATEWAY}"
+)
+
+_DEPLOY_T0 = time.monotonic()
+
+
+def preflight() -> None:
+    header("preflight")
+    ok(f"project={GC_PROJECT_ID} region={GC_REGION}")
+    ok(f"tool={TOOL_URL}")
+
+    # The gateway must exist before an engine can bind to it — fail here in
+    # seconds rather than 30s into the engine create.
+    describe = subprocess.run(
+        ["gcloud", "beta", "network-services", "agent-gateways", "describe",
+         GC_AGENT_GATEWAY, "--project", GC_PROJECT_ID, "--location", GC_REGION,
+         "--format=value(name)"],
+        capture_output=True, text=True,
+    )
+    if describe.returncode != 0 or not describe.stdout.strip():
+        die(f"gateway not found: {GC_AGENT_GATEWAY} (project {GC_PROJECT_ID}, location {GC_REGION})",
+            "Gateways are created in the console (pick the 'Allow Policy (legacy)'\n"
+            "  policy model), then set GC_AGENT_GATEWAY in .env to its bare name\n"
+            "  (e.g. ac-agent-gateway).")
+    ok(f"gateway={GC_AGENT_GATEWAY} (exists in {GC_PROJECT_ID})")
+
+    # Mint the agent's identity token for real — the exchange in pingone.py
+    # depends on it, and this catches bad credentials in seconds instead of
+    # after a multi-minute engine deploy. Unscoped client_credentials: the
+    # token endpoint returns whatever scopes the app has granted (pingone.py
+    # mints its actor token the same way).
+    try:
+        resp = httpx.post(
+            TOKEN_ENDPOINT,
+            data={"grant_type": "client_credentials"},
+            auth=(AGENT_CLIENT_ID, AGENT_CLIENT_SECRET),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15,
+        )
+    except httpx.HTTPError as e:
+        die(f"PingOne unreachable at {TOKEN_ENDPOINT}", str(e))
+    if resp.status_code == 400:
+        die("PingOne token mint rejected (HTTP 400)",
+            "Check AGENT_CLIENT_ID / AGENT_CLIENT_SECRET in .env against the\n"
+            "  PingOne application, and that the app has the Token Exchange /\n"
+            "  Client Credentials grants with the resource's scope assigned.")
+    if resp.status_code == 403:
+        die("PingOne token mint forbidden (HTTP 403)",
+            "The application's scope grant is missing — assign the resource\n"
+            "  scope in PingOne (Applications → <agent app> → Grants).")
+    if resp.status_code != 200:
+        die(f"PingOne token mint failed (HTTP {resp.status_code})", resp.text[:300])
+    if not resp.json().get("access_token"):
+        die("PingOne returned no access_token", resp.text[:300])
+    ok("token mint — client " + AGENT_CLIENT_ID[:8] + "…")
 
 
 def staging_bucket() -> str:
-    """Return the deploy staging bucket, creating gs://<project>-agent-staging if unset."""
-    uri = os.environ.get("GC_STAGING_BUCKET")
-    if uri:
-        return uri
-    name = f"{PROJECT_ID}-agent-staging"
-    client = storage.Client(project=PROJECT_ID)
+    """Engine deploys stage code + deps into gs://<project>-agent-staging;
+    create it on first use."""
+    name = f"{GC_PROJECT_ID}-agent-staging"
+    from google.cloud import storage
+    client = storage.Client(project=GC_PROJECT_ID)
     if client.lookup_bucket(name) is None:
-        print(f"Creating staging bucket gs://{name} ...")
-        client.create_bucket(name, location=REGION)
+        print(f"  · creating staging bucket gs://{name} …")
+        client.create_bucket(name, location=GC_REGION)
     return f"gs://{name}"
 
 
-def _org_id() -> str:
-    """Return the numeric organization ID for PROJECT_ID."""
-    out = subprocess.check_output(
-        ["gcloud", "projects", "get-ancestors", PROJECT_ID, "--format=value(id,type)"],
-        text=True,
-    )
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[1] == "organization":
-            return parts[0]
-    raise RuntimeError(f"No organization found for project {PROJECT_ID}")
+def cleanup_stale_engines() -> None:
+    """Delete engines sharing our display name. A redeploy replaces them by
+    definition; without this, every failed post-check orphans an engine and
+    the next deploy trips over it."""
+    stale = [e for e in list_engines() if e.get("displayName") == AGENT_DISPLAY_NAME]
+    for e in stale:
+        engine_id = e["name"].rsplit("/", 1)[-1]
+        print(f"  · deleting stale engine {engine_id} …")
+        delete_engine(engine_id)
+    if stale:
+        # List is eventually consistent — poll until the deletions land so
+        # the create below starts from a clean slate.
+        for _ in range(20):
+            if not [e for e in list_engines() if e.get("displayName") == AGENT_DISPLAY_NAME]:
+                return
+            time.sleep(3)
+        die("stale engines did not delete in time — check console")
+
+
+def create_engine() -> str:
+    header("deploy")
+    print(f"  · creating agent engine {AGENT_DISPLAY_NAME!r} in {GC_REGION} …")
+    print(f"  · this takes 3–5 minutes (build, deploy, health-check) …")
+    client = agentplatform.Client(project=GC_PROJECT_ID, location=GC_REGION)
+    app = root_agent  # already an A2aAgent — no AdkApp wrapper
+
+    # Everything config.py requires at engine-startup import time (it runs
+    # agent.py → config.py, so all require_env values must be here).
+    env_vars = {
+        "GC_PROJECT_ID": GC_PROJECT_ID,
+        "GC_REGION": GC_REGION,
+        "GC_AGENT_GATEWAY": GC_AGENT_GATEWAY,
+        "AGENT_DISPLAY_NAME": AGENT_DISPLAY_NAME,
+        "IDP_ISSUER": IDP_ISSUER,
+        "IDP_REQUIRED_AUDIENCE": EXPECTED_AUDIENCE,
+        "IDP_REQUIRED_SCOPE": EXPECTED_SCOPE,
+        "TOOL_URL": TOOL_URL,
+        "TOOL_SCOPE": TOOL_SCOPE,
+        "GATEWAY_AUDIENCE": GATEWAY_AUDIENCE,
+        "AGENT_CLIENT_ID": AGENT_CLIENT_ID,
+        "AGENT_CLIENT_SECRET": AGENT_CLIENT_SECRET,
+    }
+    config = {
+        # Pinned exactly — see the journey CLAUDE.md for the silent-drift
+        # failure modes each pin prevents.
+        "requirements": [
+            "google-cloud-agentplatform[adk]==2.3.0",
+            # Engine startup needs `vertexai` (VertexAiSessionService); aiplatform
+            # 1.165.1 clobbers the 2.x SDK's files — only 2.x coexists.
+            "google-cloud-aiplatform==2.3.0",
+            "google-adk[a2a]==2.7.1",
+            "a2a-sdk==1.1.2",
+            "httpx", "python-dotenv", "cloudpickle", "pydantic",
+            "python-jose[cryptography]", "sse-starlette>=2.1.0",
+        ],
+        "extra_packages": ["agent.py", "config.py", "auth.py", "pingone.py"],
+        "staging_bucket": staging_bucket(),
+        "display_name": AGENT_DISPLAY_NAME,
+        "identity_type": types.IdentityType.AGENT_IDENTITY,
+        "agent_gateway_config": {"agent_to_anywhere_config": {"agent_gateway": GATEWAY_RESOURCE}},
+        "env_vars": env_vars,
+    }
+
+    remote_agent = None
+    for attempt in range(1, 11):
+        try:
+            remote_agent = client.runtimes.create(agent=app, config=config)
+            break
+        except ClientError as e:
+            msg = str(e)
+            # Recreating right after a teardown: the old gateway binding
+            # takes a few minutes to release (one-gateway-per-project rule).
+            if "Another Agent Gateway is already active" in msg and attempt < 10:
+                print(f"  · another gateway holds the project slot, waiting 30s (attempt {attempt}/10) …")
+                time.sleep(30)
+            elif "was not found" in msg and "agentGateway" in msg.replace("Gateways", "Gateway"):
+                die(f"gateway not found: {GC_AGENT_GATEWAY}",
+                    "The engine deploy validates the gateway reference and this\n"
+                    "  gateway does not exist at that project/location. Gateways are\n"
+                    "  created in the console (pick the 'Allow Policy (legacy)' policy\n"
+                    "  model), then set GC_AGENT_GATEWAY in .env to its bare name\n"
+                    "  (e.g. ac-agent-gateway).")
+            else:
+                die(f"engine create failed: {msg}")
+    if remote_agent is None:
+        die("agent engine was never created — see errors above")
+
+    resource_name = remote_agent.api_resource.name
+    ok(f"engine created: {resource_name.rsplit('/', 1)[-1]}")
+    return resource_name
 
 
 def grant_egress(resource_name: str) -> None:
-    """Grant iap.egressor to the engine so it can reach registered endpoints."""
+    """Grant roles/iap.egressor to the engine so its egress passes the gateway."""
+    # resource_name: projects/<project_number>/locations/<region>/reasoningEngines/<engine_id>
     parts = resource_name.split("/")
-    project_number, engine_id = parts[1], parts[-1]
     principal = (
-        f"principal://agents.global.org-{_org_id()}.system.id.goog"
-        f"/resources/aiplatform/projects/{project_number}"
-        f"/locations/{REGION}/reasoningEngines/{engine_id}"
+        f"principal://agents.global.org-{org_id()}.system.id.goog"
+        f"/resources/aiplatform/projects/{parts[1]}"
+        f"/locations/{GC_REGION}/reasoningEngines/{parts[-1]}"
     )
-    print(f"Granting iap.egressor to engine {engine_id} ...")
+    print("  · granting roles/iap.egressor to engine principal …")
     subprocess.check_call([
         "gcloud", "alpha", "iap", "web", "add-iam-policy-binding",
         "--resource-type=agent-registry",
-        f"--region={REGION}",
+        f"--region={GC_REGION}",
         f"--member={principal}",
         "--role=roles/iap.egressor",
-        f"--project={PROJECT_ID}",
-    ])
-    print("Egress grant done (propagation takes ~3 minutes).")
+        f"--project={GC_PROJECT_ID}",
+    ], stdout=subprocess.DEVNULL)
+    ok("egress grant done (gateway-side propagation takes ~3 minutes)")
 
 
-client = agentplatform.Client(project=PROJECT_ID, location=REGION)
-app = root_agent
-config = {
-    # Pinned exactly, not >=1.165.1 — see support-agent/deploy.py's comment:
-    # an unbounded lower bound let a support-agent redeploy resolve a newer
-    # release that renamed/removed agentplatform.agent_engines, failing the
-    # deployed engine at startup. Applying the same pin here preemptively.
-    # google-adk/a2a-sdk pinned exactly: an unbounded <3/<2 spec let the
-    # support-agent's remote build silently resolve google-adk 2.8.0 (local
-    # venv had 2.7.1, the verified-working version), and its deployed workers
-    # then died mid-stream on every successful tool call. Same failure class
-    # as the aiplatform pin above.
-    "requirements": ["google-cloud-aiplatform[agent_engines,adk]==1.165.1", "google-adk[a2a]==2.7.1", "a2a-sdk==1.1.2", "httpx", "python-dotenv", "cloudpickle", "pydantic", "python-jose[cryptography]", "sse-starlette>=2.1.0"],
-    "extra_packages": ["agent.py", "pingone.py", "protocol.py"],
-    "staging_bucket": staging_bucket(),
-    "display_name": os.environ["AGENT_DISPLAY_NAME"],
-    "identity_type": types.IdentityType.AGENT_IDENTITY,
-    "agent_gateway_config": {"agent_to_anywhere_config": {"agent_gateway": GATEWAY_RESOURCE}},
-    "env_vars": {key: value for key, value in os.environ.items() if key.startswith(("GC_", "AGENT_", "IDP_", "GATEWAY_", "TOOL_", "LOCAL_"))},
-}
+def postdeploy(resource_name: str) -> None:
+    header("postdeploy")
+    engine_id = resource_name.rsplit("/", 1)[-1]
 
-print("Creating agent engine...")
-for attempt in range(1, 11):
+    # 1. The engine this deploy created is fetchable by ID (not a name-count
+    #    check — the list is eventually consistent, ghosts must not fail us).
+    got = subprocess.run(
+        ["curl", "-s", "-f", "-H", f"Authorization: Bearer {gcloud('auth', 'print-access-token')}",
+         engine_url(engine_id)],
+        capture_output=True, text=True,
+    )
+    if got.returncode != 0:
+        die(f"created engine {engine_id} is not fetchable — create did not land")
+    engine = json.loads(got.stdout)
+    if engine.get("displayName") != AGENT_DISPLAY_NAME:
+        die(f"engine {engine_id} has display name {engine.get('displayName')!r}, expected {AGENT_DISPLAY_NAME!r}")
+    ok(f"engine {engine_id} is live")
+
+    # 2. The engine carries the expected gateway binding.
+    gateway = find_gateway_binding(engine)
+    if gateway is None:
+        die("engine spec shows no gateway binding",
+            "The engine was created without agentGatewayConfig — check the\n"
+            "  agent_gateway_config block in deploy.py.")
+    if gateway != GATEWAY_RESOURCE:
+        die(f"engine bound to {gateway}, expected {GATEWAY_RESOURCE}")
+    ok(f"gateway binding: {GC_AGENT_GATEWAY}")
+
+    # 3. The engine's agent principal holds roles/iap.egressor.
+    project_number = gcloud("projects", "describe", GC_PROJECT_ID,
+                             "--format=value(projectNumber)")
+    principal = (
+        f"principal://agents.global.org-{org_id()}.system.id.goog"
+        f"/resources/aiplatform/projects/{project_number}"
+        f"/locations/{GC_REGION}/reasoningEngines/{engine_id}"
+    )
+    policy = json.loads(gcloud(
+        "alpha", "iap", "web", "get-iam-policy",
+        "--resource-type=agent-registry", f"--region={GC_REGION}",
+        f"--project={GC_PROJECT_ID}", "--format=json",
+    ))
+    bound = any(
+        b.get("role") == "roles/iap.egressor" and principal in b.get("members", [])
+        for b in policy.get("bindings", [])
+    )
+    if not bound:
+        die(f"{principal} is missing roles/iap.egressor",
+            "The grant did not land (or landed under a stale principal). Re-run\n"
+            "make deploy, or add the binding manually with gcloud alpha iap web\n"
+            "add-iam-policy-binding --resource-type=agent-registry.")
+    ok("iap.egressor granted to engine principal")
+
+    elapsed = time.monotonic() - _DEPLOY_T0
+    print(f"""
+{gcp_helpers.LINE}
+  ✔ DEPLOY COMPLETE — {AGENT_DISPLAY_NAME}  ({elapsed:.0f}s)
+{gcp_helpers.LINE}
+    engine:   {resource_name}
+    gateway:  {GC_AGENT_GATEWAY}  (egress live after ~3 min propagation)
+{gcp_helpers.LINE}""")
+
+
+if __name__ == "__main__":
     try:
-        remote_agent = client.agent_engines.create(agent=app, config=config)
-        break
-    except ClientError as e:
-        if "Another Agent Gateway is already active" in str(e) and attempt < 10:
-            print(f"Gateway binding still releasing, waiting 30s (attempt {attempt}/10)...")
-            time.sleep(30)
-        else:
-            raise
-
-resource_name = remote_agent.api_resource.name
-print("Deployed Order Status Agent:", resource_name)
-grant_egress(resource_name)
+        preflight()
+        cleanup_stale_engines()
+        resource_name = create_engine()
+        grant_egress(resource_name)
+        postdeploy(resource_name)
+    except KeyboardInterrupt:
+        die("interrupted")

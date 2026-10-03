@@ -35,7 +35,6 @@ func newTokenValidator(ctx context.Context) (*tokenValidator, error) {
 	if err := jwksCache.Register(jwksURL); err != nil {
 		return nil, fmt.Errorf("register JWKS url: %w", err)
 	}
-	// Warm the cache so a bad issuer URL fails fast at startup rather than per-request.
 	if _, err := jwksCache.Refresh(ctx, jwksURL); err != nil {
 		return nil, fmt.Errorf("fetch JWKS from %s: %w", jwksURL, err)
 	}
@@ -44,8 +43,6 @@ func newTokenValidator(ctx context.Context) (*tokenValidator, error) {
 	return &tokenValidator{jwksURL: jwksURL, jwksCache: jwksCache, requiredIssuer: requiredIssuer, requiredAudience: requiredAudience, requiredScope: requiredScope}, nil
 }
 
-// middleware wraps an MCP handler with bearer validation: reject 401/403
-// before the handler runs, log the verified identity, then forward.
 func (v *tokenValidator) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -59,11 +56,6 @@ func (v *tokenValidator) middleware(next http.Handler) http.Handler {
 		tok, err := v.verify(r.Context(), strings.TrimPrefix(authHeader, "Bearer "))
 		if err != nil {
 			log.Printf("[SupplyChain] token validation failed: %v", err)
-			// RFC 6750: a malformed/expired token is 401 with an
-			// error="invalid_token" challenge; a valid token lacking the
-			// required scope is 403 with error="insufficient_scope". The
-			// validation detail goes to the log only — never echoed to the
-			// caller.
 			if errors.Is(err, errInsufficientScope) {
 				w.Header().Set("WWW-Authenticate",
 					fmt.Sprintf(`Bearer error="insufficient_scope", scope=%q`, v.requiredScope))
@@ -75,9 +67,6 @@ func (v *tokenValidator) middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Log the verified identity: sub (who the call is for), act.sub (who
-		// acted for it — the delegation proof), and the granted scope. Raw
-		// tokens are never logged.
 		var actSub string
 		if act, ok := tok.Get("act"); ok {
 			if m, ok := act.(map[string]any); ok {
@@ -100,8 +89,6 @@ func (v *tokenValidator) verify(ctx context.Context, raw string) (jwt.Token, err
 		return nil, fmt.Errorf("load JWKS: %w", err)
 	}
 
-	// PingOne's JWKS keys omit the "alg" field — infer it from the key type,
-	// otherwise jwx refuses to verify the signature.
 	tok, err := jwt.Parse([]byte(raw),
 		jwt.WithKeySet(set, jws.WithInferAlgorithmFromKey(true)),
 		jwt.WithValidate(true),

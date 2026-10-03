@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 from agent_client import ensure_session, run_agent
-from auth import validate_user_token
+from auth import validate_inbound_token
 from config import CORS_ORIGIN
 
 app = FastAPI()
@@ -35,7 +35,7 @@ async def chat(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=401, detail="Missing Bearer token")
     user_token = auth_header[len("Bearer "):]
 
-    claims = validate_user_token(user_token)
+    claims = validate_inbound_token(user_token)
     sub = claims["sub"]
     if not isinstance(sub, str):
         raise HTTPException(status_code=401, detail="Token sub claim is not a string")

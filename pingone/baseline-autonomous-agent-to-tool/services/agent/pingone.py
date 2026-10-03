@@ -10,7 +10,7 @@ tool-scoped token before the request reaches the MCP tool.
 import threading
 import time
 import httpx
-from config import AGENT_CLIENT_ID, AGENT_CLIENT_SECRET, TOKEN_ENDPOINT, TOOL_SCOPE
+from config import AGENT_CLIENT_ID, AGENT_CLIENT_SECRET, GATEWAY_AUDIENCE, TOKEN_ENDPOINT, TOOL_SCOPE
 
 _lock = threading.Lock()
 _cached_token = ""
@@ -20,7 +20,11 @@ _expires_at = 0.0
 def _fetch_token() -> str:
     resp = httpx.post(
         TOKEN_ENDPOINT,
-        data={"grant_type": "client_credentials", "scope": TOOL_SCOPE},
+        data={
+            "grant_type": "client_credentials",
+            "audience": GATEWAY_AUDIENCE,
+            "scope": TOOL_SCOPE,
+        },
         auth=(AGENT_CLIENT_ID, AGENT_CLIENT_SECRET),
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=15,

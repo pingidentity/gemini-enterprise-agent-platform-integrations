@@ -13,8 +13,8 @@ import logging
 import threading
 import time
 import httpx
-from auth import validate_user_token
-from config import AGENT_CLIENT_ID, AGENT_CLIENT_SECRET, TOKEN_ENDPOINT, TOOL_SCOPE
+from auth import validate_inbound_token
+from config import AGENT_CLIENT_ID, AGENT_CLIENT_SECRET, GATEWAY_AUDIENCE, TOKEN_ENDPOINT, TOOL_SCOPE
 
 _lock = threading.Lock()
 _actor_token = ""
@@ -47,7 +47,7 @@ def _exchange(user_token: str) -> tuple[str, int]:
     """RFC 8693: exchange user token (subject) + agent token (actor) -> delegated token."""
     # Independent re-check before the token is spent (the bridge validated it
     # at the front door) — see auth.py.
-    validate_user_token(user_token)
+    validate_inbound_token(user_token)
     actor = _get_actor_token()
     resp = httpx.post(
         TOKEN_ENDPOINT,
@@ -58,6 +58,7 @@ def _exchange(user_token: str) -> tuple[str, int]:
             "actor_token": actor,
             "actor_token_type": "urn:ietf:params:oauth:token-type:access_token",
             "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
+            "audience": GATEWAY_AUDIENCE,
             "scope": TOOL_SCOPE,
         },
         auth=(AGENT_CLIENT_ID, AGENT_CLIENT_SECRET),

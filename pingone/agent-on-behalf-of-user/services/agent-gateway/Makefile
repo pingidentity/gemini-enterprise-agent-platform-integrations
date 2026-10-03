@@ -39,17 +39,34 @@ render: preflight
 	envsubst < authz-policy.tmpl.yaml > $(POLICY_YAML); \
 	echo "PASS rendered $(POLICY_YAML)"
 
-# Import the interception policy, then verify what the gateway enforces.
+# Import the interception policy (an upsert), then verify what the gateway
+# enforces. The import's LRO poll can fail (code 13 / ABORTED) after the change
+# has landed server-side — verify-attach, which describes the live resource,
+# is the real verdict.
 attach: render
 	@echo "import"
 	@out=$$(gcloud beta network-security authz-policies import $(GC_AUTHZ_POLICY_NAME) \
-		--source $(POLICY_YAML) --location $(GC_REGION) --project $(PROJECT_ID) 2>&1) \
-	|| { echo "FAIL authz policy import"; \
-		echo "$$out" | grep -v "^Waiting" | grep -v "^\.*done"; \
-		echo "  The policy binds extension $(GC_SERVICE_EXTENSION_NAME) to gateway $(GC_GATEWAY_NAME);"; \
-		echo "  an error here usually means the extension resource did not land —"; \
-		echo "  redeploy the extension service: (cd ../agent-gateway-extension-service && make deploy)"; exit 1; }; \
-	echo "PASS imported authzPolicies/$(GC_AUTHZ_POLICY_NAME)"
+		--source $(POLICY_YAML) --location $(GC_REGION) --project $(PROJECT_ID) 2>&1); \
+	if [ $$? -ne 0 ]; then \
+		echo "$$out" | grep -v "^Waiting" | grep -v "^\." | grep -v "^Request issued" | head -4; \
+		if echo "$$out" | grep -q "internal error"; then \
+			echo "WARN import poll flaked (known gcloud code-13 issue) — change may still have landed; checking"; \
+			for i in 1 2 3 4 5 6 7 8; do \
+				gcloud beta network-security authz-policies describe $(GC_AUTHZ_POLICY_NAME) --location $(GC_REGION) --project $(PROJECT_ID) >/dev/null 2>&1 && break; \
+				echo "  policy not visible yet — retry $$i/8 in 15s"; sleep 15; \
+			done; \
+		elif echo "$$out" | grep -q "unable to queue the operation"; then \
+			echo "WARN a prior import's operation is still in flight server-side (code 13 polls leak LROs)"; \
+			echo "  The policy is likely already applied — verify-attach below is the verdict."; \
+			echo "  If attach keeps failing: wait a few minutes for the stale op to drain, or"; \
+			echo "  check done=true with: gcloud beta network-security operations list"; \
+		else \
+			echo "FAIL authz policy import"; \
+			echo "  The policy binds extension $(GC_SERVICE_EXTENSION_NAME) to gateway $(GC_GATEWAY_NAME);"; \
+			echo "  an error here usually means the extension resource did not land —"; \
+			echo "  redeploy the extension service: (cd ../agent-gateway-extension-service && make deploy)"; exit 1; \
+		fi; \
+	fi
 	@$(MAKE) verify-attach
 
 # Describe the policy back; assert the fields the gateway enforces.

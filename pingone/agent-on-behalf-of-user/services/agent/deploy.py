@@ -26,6 +26,7 @@ from config import (
     AGENT_CLIENT_ID,
     AGENT_CLIENT_SECRET,
     AGENT_DISPLAY_NAME,
+    GATEWAY_AUDIENCE,
     GC_AGENT_GATEWAY,
     GC_PROJECT_ID,
     GC_REGION,
@@ -47,8 +48,7 @@ from gcp_helpers import (
     org_id,
 )
 
-# The gateway is configured by bare name; the full resource path is built here
-# so the project-ID-string form is guaranteed by construction.
+# The gateway is configured by bare name; the full resource path is built here.
 GATEWAY_RESOURCE = (
     f"projects/{GC_PROJECT_ID}/locations/{GC_REGION}/agentGateways/{GC_AGENT_GATEWAY}"
 )
@@ -155,6 +155,7 @@ def create_engine() -> str:
         "AGENT_CLIENT_ID": AGENT_CLIENT_ID,
         "AGENT_CLIENT_SECRET": AGENT_CLIENT_SECRET,
         "TOOL_SCOPE": TOOL_SCOPE,
+        "GATEWAY_AUDIENCE": GATEWAY_AUDIENCE,
         # Let the agent's own PingOne token ride on MCP egress through the gateway.
         "GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES": "false",
     }

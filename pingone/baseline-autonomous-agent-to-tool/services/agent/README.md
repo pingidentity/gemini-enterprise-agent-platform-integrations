@@ -23,7 +23,7 @@ cp .env.sample .env
 | Variable | Value |
 |---|---|
 | `GC_REGION` | Deploy region, e.g. `us-central1` (the project ID is derived from gcloud at deploy time) |
-| `AGENT_DISPLAY_NAME` | Display name for the Reasoning Engine, e.g. `baatt-crm-agent` |
+| `AGENT_DISPLAY_NAME` | Display name for the Reasoning Engine, e.g. `baatt_crm_agent` |
 | `IDP_ISSUER` | PingOne issuer base, e.g. `https://auth.pingone.<region>/<env-id>/as` |
 | `GC_AGENT_GATEWAY` | Bare gateway name, e.g. `baatt-agent-gateway` (the full resource path is built from the derived project ID) |
 | `AGENT_CLIENT_ID` | Agent PingOne app Client ID |

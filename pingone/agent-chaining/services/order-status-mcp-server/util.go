@@ -20,13 +20,8 @@ func requireEnv(name string) string {
 	return val
 }
 
-// callerSubFromCtx returns the caller sub the middleware put in the request
-// context.
+// callerSubFromCtx returns the caller sub the middleware put in the request context.
 func callerSubFromCtx(ctx context.Context) string {
 	caller, _ := ctx.Value(ctxKeyCallerSub{}).(string)
 	return caller
-}
-
-func validOrderID(value string) bool {
-	return orderIDPattern.MatchString(value)
 }

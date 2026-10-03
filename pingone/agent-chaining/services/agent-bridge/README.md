@@ -18,13 +18,12 @@ cp .env.sample .env
 
 | Variable | Value |
 |---|---|
-| `GC_PROJECT_ID` | Target project ID |
-| `GC_REGION` | Deploy region, e.g. `us-central1` |
-| `GC_CLOUD_RUN_SERVICE_NAME` | Cloud Run service name, e.g. `agent-chain-bridge` |
-| `AGENT_ENGINE_NAME` | Full Reasoning Engine resource name from `make deploy` in the agent directory |
+| `GC_REGION` | Deploy region, e.g. `us-central1` (the project ID is derived from the Cloud Run metadata server at runtime) |
+| `GC_CLOUD_RUN_SERVICE_NAME` | Cloud Run service name, e.g. `ac-agent-bridge` |
+| `AGENT_ENGINE_ID` | The Support Agent's bare Reasoning Engine ID (the resource name is built from `GC_PROJECT_ID`/`GC_REGION`) |
 | `CORS_ORIGIN` | Chat UI Cloud Run URL |
-| `PINGONE_ISSUER` | `https://auth.pingone.<region>/<env-id>/as` |
-| `EXPECTED_AUDIENCE` | Expected `aud` on the browser's login token — Support Agent's own PingOne resource audience (`support-agent`) |
+| `IDP_ISSUER` | `https://auth.pingone.<region>/<env-id>/as` |
+| `IDP_REQUIRED_AUDIENCE` | Expected `aud` on the browser's login token — Support Agent's own PingOne resource audience (`support-agent`) |
 
 ## Deploy
 

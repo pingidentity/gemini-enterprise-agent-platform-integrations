@@ -2,12 +2,12 @@
 
 Validates the browser's PingOne login token (stored in ADK session state by
 the bridge) before it is used as an RFC 8693 subject_token: signature via
-JWKS, issuer, audience (the Financial Agent's own PingOne resource), `sub`
+JWKS, issuer, audience (Support Agent's own PingOne resource), `sub`
 presence, and scope.
 
 Agent Bridge already validates this token before storing it in session
 state; this is an independent re-check before the token is spent, matching
-the defense-in-depth pattern every other hop in this repo uses (the
+the defense-in-depth pattern every other hop in this journey uses (the
 extension validates, then the target it forwards to validates again).
 """
 
